@@ -5,11 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Reservation;
 use App\Models\Laboratory;
-<<<<<<< HEAD
-=======
-use App\Notifications\ReservationApproved;
-use App\Notifications\ReservationRejected;
->>>>>>> 92b809e (notifikasi)
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -97,18 +92,9 @@ class ReservationController extends Controller
                 'approved_at' => now(),
             ]);
 
-<<<<<<< HEAD
             DB::commit();
 
             return redirect()->back()->with('success', 'Reservasi berhasil disetujui.');
-=======
-            // Send notification to user
-            $reservation->user->notify(new ReservationApproved($reservation));
-
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Reservasi berhasil disetujui dan notifikasi telah dikirim ke user.');
->>>>>>> 92b809e (notifikasi)
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -143,18 +129,9 @@ class ReservationController extends Controller
                 'approved_at' => now(), // We use same field for when it was processed
             ]);
 
-<<<<<<< HEAD
             DB::commit();
 
             return redirect()->back()->with('success', 'Reservasi berhasil ditolak.');
-=======
-            // Send notification to user with rejection reason
-            $reservation->user->notify(new ReservationRejected($reservation, $request->admin_notes));
-
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Reservasi berhasil ditolak dan notifikasi telah dikirim ke user.');
->>>>>>> 92b809e (notifikasi)
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();

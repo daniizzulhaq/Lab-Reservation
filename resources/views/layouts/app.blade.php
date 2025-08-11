@@ -18,12 +18,9 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-<<<<<<< HEAD
-=======
     <!-- FullCalendar CSS -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.css' rel='stylesheet' />
 
->>>>>>> 92b809e (notifikasi)
     <!-- Custom Styles -->
     <style>
         body {
@@ -121,8 +118,6 @@
             transform: translateX(4px);
         }
 
-<<<<<<< HEAD
-=======
         /* Notification Badge */
         .notification-badge {
             position: absolute;
@@ -193,7 +188,6 @@
             margin-top: 4px;
         }
 
->>>>>>> 92b809e (notifikasi)
         /* Footer styling */
         footer {
             background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
@@ -207,19 +201,11 @@
     @if(!request()->routeIs('login') && !request()->routeIs('register'))
         <!-- Navigation -->
         <nav class="navbar navbar-expand-lg navbar-dark">
-<<<<<<< HEAD
-    <div class="container">
-        <a class="navbar-brand">
-            <i class="fas fa-flask me-2"></i>
-            Sistem Reservasi Lab
-        </a>
-=======
             <div class="container">
                 <a class="navbar-brand">
                     <i class="fas fa-flask me-2"></i>
                     Sistem Reservasi Lab
                 </a>
->>>>>>> 92b809e (notifikasi)
 
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
@@ -247,13 +233,6 @@
                                         <li><a class="dropdown-item" href="{{ route('admin.users.index') }}">
                                             <i class="fas fa-users me-2"></i>Pengguna
                                         </a></li>
-<<<<<<< HEAD
-                                    </ul>
-                                </li>
-                            @endif
-                            
-                           
-=======
                                         <li><a class="dropdown-item" href="{{ route('admin.reports.index') }}">
                                             <i class="fas fa-chart-bar me-2"></i>Laporan
                                         </a></li>
@@ -276,7 +255,6 @@
                                     </a>
                                 </li>
                             @endif
->>>>>>> 92b809e (notifikasi)
                         @endauth
                     </ul>
 
@@ -299,8 +277,6 @@
                                 </li>
                             @endif
                         @else
-<<<<<<< HEAD
-=======
                             <!-- Notifications Dropdown (Only for dosen/mahasiswa) -->
                             @if(in_array(auth()->user()->role, ['dosen', 'mahasiswa']))
                                 <li class="nav-item dropdown">
@@ -328,7 +304,6 @@
                                 </li>
                             @endif
 
->>>>>>> 92b809e (notifikasi)
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                     <i class="fas fa-user me-1"></i> {{ Auth::user()->name }}
@@ -424,13 +399,6 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-<<<<<<< HEAD
-=======
-    <!-- FullCalendar JS -->
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales/id.min.js'></script>
-    
->>>>>>> 92b809e (notifikasi)
     <!-- Custom Scripts -->
     <script>
         // Auto dismiss alerts after 5 seconds
@@ -443,120 +411,8 @@
                     }
                 });
             }, 5000);
-<<<<<<< HEAD
         });
 
-=======
-
-            // Load notifications on page load for logged in users
-            @auth
-                @if(in_array(auth()->user()->role, ['dosen', 'mahasiswa']))
-                    loadNotifications();
-                    // Refresh notifications every 30 seconds
-                    setInterval(loadNotifications, 30000);
-                @endif
-            @endauth
-        });
-
-        // Notification functions
-        @auth
-        @if(in_array(auth()->user()->role, ['dosen', 'mahasiswa']))
-        function loadNotifications() {
-            fetch('{{ route("user.api.notifications.latest") }}?limit=5')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        updateNotificationBadge(data.unread_count);
-                        updateNotificationDropdown(data.notifications);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading notifications:', error);
-                });
-        }
-
-        function updateNotificationBadge(count) {
-            const badge = document.getElementById('notificationBadge');
-            const markAllBtn = document.getElementById('markAllBtn');
-            
-            if (count > 0) {
-                badge.textContent = count > 99 ? '99+' : count;
-                badge.classList.remove('d-none');
-                markAllBtn.style.display = 'inline-block';
-            } else {
-                badge.classList.add('d-none');
-                markAllBtn.style.display = 'none';
-            }
-        }
-
-        function updateNotificationDropdown(notifications) {
-            const list = document.getElementById('notificationList');
-            
-            if (notifications.length === 0) {
-                list.innerHTML = `
-                    <div class="text-center py-3 text-muted">
-                        <i class="fas fa-inbox me-2"></i>
-                        Tidak ada notifikasi
-                    </div>
-                `;
-                return;
-            }
-
-            list.innerHTML = notifications.map(notification => `
-                <div class="notification-item ${!notification.is_read ? 'unread' : ''}" onclick="markAsRead('${notification.id}')">
-                    <div class="d-flex">
-                        <div class="notification-icon ${notification.color}">
-                            <i class="${notification.icon}"></i>
-                        </div>
-                        <div class="notification-text">
-                            <div class="fw-semibold">${notification.title}</div>
-                            <div class="text-muted small">${notification.message}</div>
-                            <div class="notification-time">${notification.created_at}</div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function markAsRead(notificationId) {
-            fetch(`{{ route('user.notifications.read', '') }}/${notificationId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    loadNotifications();
-                }
-            })
-            .catch(error => {
-                console.error('Error marking notification as read:', error);
-            });
-        }
-
-        function markAllAsRead() {
-            fetch('{{ route("user.notifications.readAll") }}', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    loadNotifications();
-                }
-            })
-            .catch(error => {
-                console.error('Error marking all notifications as read:', error);
-            });
-        }
-        @endif
-        @endauth
-
->>>>>>> 92b809e (notifikasi)
         // Smooth scroll for anchor links
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
@@ -570,6 +426,106 @@
                 }
             });
         });
+
+        // Notification functionality for dosen/mahasiswa
+        @if(auth()->check() && in_array(auth()->user()->role, ['dosen', 'mahasiswa']))
+        let notificationInterval;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load initial notifications
+            loadNotifications();
+            
+            // Set up periodic refresh
+            notificationInterval = setInterval(loadNotifications, 30000); // Check every 30 seconds
+        });
+
+        function loadNotifications() {
+            fetch('{{ route("user.api.notifications.unread-count") }}')
+                .then(response => response.json())
+                .then(data => {
+                    const badge = document.getElementById('notificationBadge');
+                    if (data.count > 0) {
+                        badge.textContent = data.count > 99 ? '99+' : data.count;
+                        badge.classList.remove('d-none');
+                    } else {
+                        badge.classList.add('d-none');
+                    }
+                })
+                .catch(error => console.error('Error loading notification count:', error));
+        }
+
+        // Load latest notifications when dropdown is opened
+        document.getElementById('notificationDropdown').addEventListener('click', function() {
+            loadLatestNotifications();
+        });
+
+        function loadLatestNotifications() {
+            const listContainer = document.getElementById('notificationList');
+            listContainer.innerHTML = '<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Memuat...</div>';
+
+            fetch('{{ route("user.api.notifications.latest") }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.notifications && data.notifications.length > 0) {
+                        let html = '';
+                        data.notifications.forEach(notification => {
+                            const iconClass = notification.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+                            const iconBg = notification.type === 'success' ? 'success' : 'danger';
+                            const unreadClass = notification.read_at ? '' : 'unread';
+                            
+                            html += `
+                                <div class="notification-item ${unreadClass}">
+                                    <div class="d-flex">
+                                        <div class="notification-icon ${iconBg}">
+                                            <i class="fas ${iconClass}"></i>
+                                        </div>
+                                        <div class="notification-text">
+                                            <div>${notification.data.message}</div>
+                                            <div class="notification-time">${notification.created_at_human}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        // Show mark all as read button if there are unread notifications
+                        const markAllBtn = document.getElementById('markAllBtn');
+                        if (data.has_unread) {
+                            markAllBtn.style.display = 'inline-block';
+                        } else {
+                            markAllBtn.style.display = 'none';
+                        }
+                        
+                        listContainer.innerHTML = html;
+                    } else {
+                        listContainer.innerHTML = '<div class="text-center py-3 text-muted">Tidak ada notifikasi</div>';
+                        document.getElementById('markAllBtn').style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading notifications:', error);
+                    listContainer.innerHTML = '<div class="text-center py-3 text-danger">Gagal memuat notifikasi</div>';
+                });
+        }
+
+        function markAllAsRead() {
+            fetch('{{ route("user.notifications.readAll") }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadNotifications(); // Refresh badge
+                    loadLatestNotifications(); // Refresh dropdown
+                }
+            })
+            .catch(error => console.error('Error marking notifications as read:', error));
+        }
+        @endif
     </script>
     
     @stack('scripts')

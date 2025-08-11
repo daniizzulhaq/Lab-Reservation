@@ -15,35 +15,72 @@ use App\Http\Controllers\User\NotificationController as UserNotificationControll
 use App\Http\Controllers\Auth\CustomAuthController;
 use Illuminate\Support\Facades\Route;
 
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
 // Landing Page (Public)
 Route::get('/', [LandingController::class, 'index'])->name('landing');
 
-// Custom Auth Routes
-Route::get('/login', [CustomAuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [CustomAuthController::class, 'login']);
-Route::get('/register', [CustomAuthController::class, 'showRegister'])->name('register');
-Route::post('/register', [CustomAuthController::class, 'register']);
-Route::post('/logout', [CustomAuthController::class, 'logout'])->name('logout');
+// Authentication Routes
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [CustomAuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [CustomAuthController::class, 'login']);
+    Route::get('/register', [CustomAuthController::class, 'showRegister'])->name('register');
+    Route::post('/register', [CustomAuthController::class, 'register']);
+});
+
+Route::post('/logout', [CustomAuthController::class, 'logout'])->name('logout')->middleware('auth');
 
 // Protected Routes
 Route::middleware('auth')->group(function () {
+    
+    // Home Route
     Route::get('/home', [HomeController::class, 'index'])->name('home');
+    
+    // Role Redirect Route
+    Route::get('/redirect', function () {
+        $user = auth()->user();
+        
+        if ($user->role === 'admin') {
+            return redirect()->route('admin.dashboard');
+        } elseif (in_array($user->role, ['dosen', 'mahasiswa', 'user'])) {
+            return redirect()->route('user.dashboard');
+        }
+        
+        return redirect()->route('home');
+    })->name('role.redirect');
 
-    // Profile Routes
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::put('/password', [ProfileController::class, 'updatePassword'])->name('password.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    // Profile Routes (Common for all authenticated users)
+    Route::prefix('profile')->name('profile.')->group(function () {
+        Route::get('/', [ProfileController::class, 'edit'])->name('edit');
+        Route::patch('/', [ProfileController::class, 'update'])->name('update');
+        Route::put('/password', [ProfileController::class, 'updatePassword'])->name('password.update');
+        Route::delete('/', [ProfileController::class, 'destroy'])->name('destroy');
+    });
 
-    // Admin Routes
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Routes
+    |--------------------------------------------------------------------------
+    */
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        
+        // Dashboard
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
         
-        // API Routes - MOVE BEFORE RESOURCE ROUTES TO PREVENT CONFLICTS
+        // API Routes (Must be before resource routes)
         Route::prefix('api')->name('api.')->group(function () {
-            Route::get('chart-data', [AdminDashboardController::class, 'getChartData'])->name('chart-data');
-            Route::get('calendar-events', [AdminDashboardController::class, 'calendarEvents'])->name('calendar-events');
-            Route::get('availability-check', [AdminReservationController::class, 'checkAvailability'])->name('availability-check');
+            // Calendar and Dashboard APIs
+            Route::get('/calendar-events', [AdminDashboardController::class, 'calendarEvents'])->name('calendar.events');
+            Route::get('/chart-data', [AdminDashboardController::class, 'getChartData'])->name('chart.data');
+            Route::get('/reservation-details/{id}', [AdminDashboardController::class, 'getReservationDetails'])->name('reservation.details');
+            
+            // Availability check - Fixed route name to match error
+            Route::get('/availability-check', [AdminReservationController::class, 'checkAvailability'])->name('availability-check');
+            Route::post('/availability-check', [AdminReservationController::class, 'checkAvailability'])->name('availability-check.post');
         });
 
         // Laboratory Management
@@ -51,55 +88,66 @@ Route::middleware('auth')->group(function () {
 
         // Reservation Management
         Route::resource('reservations', AdminReservationController::class);
-        Route::post('reservations/{reservation}/approve', [AdminReservationController::class, 'approve'])->name('reservations.approve');
-        Route::post('reservations/{reservation}/reject', [AdminReservationController::class, 'reject'])->name('reservations.reject');
+        Route::prefix('reservations/{reservation}')->name('reservations.')->group(function () {
+            Route::post('/approve', [AdminReservationController::class, 'approve'])->name('approve');
+            Route::post('/reject', [AdminReservationController::class, 'reject'])->name('reject');
+        });
 
         // User Management
         Route::resource('users', AdminUserController::class);
 
-        // Reports Routes - FIXED: Added missing routes that match the error
+        // Reports
         Route::prefix('reports')->name('reports.')->group(function () {
             Route::get('/', [AdminReportController::class, 'index'])->name('index');
             
-            // Direct export routes (matching the error message)
-            Route::get('excel', [AdminReportController::class, 'exportExcel'])->name('excel');
-            Route::get('pdf', [AdminReportController::class, 'exportPdf'])->name('pdf');
+            // Export routes - Fixed naming convention
+            Route::get('/export/excel', [AdminReportController::class, 'exportExcel'])->name('excel');
+            Route::get('/export/pdf', [AdminReportController::class, 'exportPdf'])->name('pdf');
             
-            // Alternative export routes with explicit export prefix
-            Route::get('export/excel', [AdminReportController::class, 'exportExcel'])->name('export.excel');
-            Route::get('export/pdf', [AdminReportController::class, 'exportPdf'])->name('export.pdf');
-            
-            // Download routes
-            Route::get('download/excel', [AdminReportController::class, 'exportExcel'])->name('download.excel');
-            Route::get('download/pdf', [AdminReportController::class, 'exportPdf'])->name('download.pdf');
-            
-            // Generic export route (defaults to Excel)
-            Route::get('export', [AdminReportController::class, 'export'])->name('export');
+            // Alternative with export prefix (if needed)
+            Route::prefix('export')->name('export.')->group(function () {
+                Route::get('/excel-alt', [AdminReportController::class, 'exportExcel'])->name('excel-alt');
+                Route::get('/pdf-alt', [AdminReportController::class, 'exportPdf'])->name('pdf-alt');
+            });
         });
     });
 
-    // User Routes (Dosen & Mahasiswa) - FIXED: Use correct role names
+    /*
+    |--------------------------------------------------------------------------
+    | User Routes (Dosen, Mahasiswa, User)
+    |--------------------------------------------------------------------------
+    */
     Route::middleware('role:dosen,mahasiswa,user')->prefix('user')->name('user.')->group(function () {
+        
+        // Dashboard
         Route::get('/dashboard', [UserDashboardController::class, 'index'])->name('dashboard');
 
-        // API Routes - MOVE BEFORE RESOURCE ROUTES
+        // API Routes (Must be before resource routes)
         Route::prefix('api')->name('api.')->group(function () {
-            Route::get('dashboard-calendar-events', [UserDashboardController::class, 'calendarEvents'])->name('dashboard-calendar-events');
-            Route::get('calendar-events', [UserReservationController::class, 'getCalendarEvents'])->name('calendar-events');
-            Route::get('search-laboratories', [UserLaboratoryController::class, 'search'])->name('search-laboratories');
-            Route::post('check-availability', [UserDashboardController::class, 'checkAvailability'])->name('check-availability');
+            // Calendar Events for Dashboard
+            Route::get('/calendar-events', [UserDashboardController::class, 'calendarEvents'])->name('calendar.events');
             
-            // Notification API routes
+            // Laboratory search
+            Route::get('/search-laboratories', [UserLaboratoryController::class, 'search'])->name('search.laboratories');
+            
+            // Availability check
+            Route::get('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check');
+            Route::post('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check.post');
+            Route::post('/check-availability', [UserReservationController::class, 'checkAvailability'])->name('check.availability');
+            
+            // Notifications API
             Route::prefix('notifications')->name('notifications.')->group(function () {
-                Route::get('unread-count', [UserNotificationController::class, 'getUnreadCount'])->name('unread-count');
-                Route::get('latest', [UserNotificationController::class, 'getLatestNotifications'])->name('latest');
+                Route::get('/unread-count', [UserNotificationController::class, 'getUnreadCount'])->name('unread-count');
+                Route::get('/latest', [UserNotificationController::class, 'getLatestNotifications'])->name('latest');
             });
         });
 
-        // Laboratory Viewing
-        Route::get('laboratories', [UserLaboratoryController::class, 'index'])->name('laboratories.index');
-        Route::get('laboratories/{laboratory}', [UserLaboratoryController::class, 'show'])->name('laboratories.show');
-        Route::get('laboratories/{laboratory}/availability', [UserLaboratoryController::class, 'checkAvailability'])->name('laboratories.availability');
+        // Laboratory Routes
+        Route::prefix('laboratories')->name('laboratories.')->group(function () {
+            Route::get('/', [UserLaboratoryController::class, 'index'])->name('index');
+            Route::get('/{laboratory}', [UserLaboratoryController::class, 'show'])->name('show');
+            Route::get('/{laboratory}/availability', [UserLaboratoryController::class, 'checkAvailability'])->name('availability');
+        });
 
         // Reservation Management
         Route::resource('reservations', UserReservationController::class);
@@ -109,30 +157,24 @@ Route::middleware('auth')->group(function () {
             Route::get('/', [UserNotificationController::class, 'index'])->name('index');
             Route::get('/{id}', [UserNotificationController::class, 'show'])->name('show');
             Route::post('/{id}/read', [UserNotificationController::class, 'markAsRead'])->name('read');
-            Route::post('/read-all', [UserNotificationController::class, 'markAllAsRead'])->name('readAll');
+            Route::post('/read-all', [UserNotificationController::class, 'markAllAsRead'])->name('read.all');
+            Route::post('/read-all-alt', [UserNotificationController::class, 'markAllAsRead'])->name('readAll');
             Route::delete('/{id}', [UserNotificationController::class, 'destroy'])->name('destroy');
-            Route::delete('/read/all', [UserNotificationController::class, 'deleteAllRead'])->name('deleteAllRead');
+            Route::delete('/read-all', [UserNotificationController::class, 'deleteAllRead'])->name('delete.all.read');
         });
     });
 });
 
-// Fallback route untuk redirect berdasarkan role setelah login
-Route::middleware('auth')->get('/redirect', function () {
-    $user = auth()->user();
-    
-    if ($user->role === 'admin') {
-        return redirect()->route('admin.dashboard');
-    } elseif (in_array($user->role, ['dosen', 'mahasiswa', 'user'])) {
-        return redirect()->route('user.dashboard');
-    }
-    
-    return redirect()->route('home');
-})->name('role.redirect');
-
-// Debug Routes (REMOVE IN PRODUCTION)
+/*
+|--------------------------------------------------------------------------
+| Debug Routes (Development Only)
+|--------------------------------------------------------------------------
+*/
 if (config('app.debug')) {
-    Route::middleware(['auth', 'role:admin'])->prefix('admin/debug')->name('admin.debug.')->group(function () {
-        Route::get('routes', function () {
+    Route::middleware(['auth', 'role:admin'])->prefix('debug')->name('debug.')->group(function () {
+        
+        // List all routes
+        Route::get('/routes', function () {
             $routes = collect(\Illuminate\Support\Facades\Route::getRoutes())->map(function ($route) {
                 return [
                     'method' => implode('|', $route->methods()),
@@ -145,22 +187,108 @@ if (config('app.debug')) {
             return response()->json($routes->sortBy('uri')->values());
         })->name('routes');
         
-        Route::get('user-info', function () {
+        // User information
+        Route::get('/user-info', function () {
             return response()->json([
                 'user' => auth()->user(),
                 'role' => auth()->user()->role,
-                'permissions' => auth()->user()->getAllPermissions() ?? 'No permissions package'
+                'permissions' => 'Role-based access control'
             ]);
         })->name('user.info');
         
-        Route::get('test-export', function () {
+        // Test calendar events
+        Route::get('/test-admin-calendar', function () {
             try {
-                $controller = app(\App\Http\Controllers\Admin\ReportController::class);
-                return "ReportController loaded successfully. Available methods: " . 
-                       implode(', ', get_class_methods($controller));
+                $controller = app(AdminDashboardController::class);
+                $request = request();
+                $response = $controller->calendarEvents($request);
+                return $response;
             } catch (\Exception $e) {
-                return "Error loading ReportController: " . $e->getMessage();
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
+                ], 500);
             }
-        })->name('test.export');
+        })->name('test.admin.calendar');
+        
+        // Test user calendar events
+        Route::get('/test-user-calendar', function () {
+            try {
+                $controller = app(UserDashboardController::class);
+                $request = request();
+                $response = $controller->calendarEvents($request);
+                return $response;
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
+                ], 500);
+            }
+        })->name('test.user.calendar');
+        
+        // Create sample data
+        Route::get('/create-sample-data', function () {
+            try {
+                $laboratories = \App\Models\Laboratory::all();
+                $users = \App\Models\User::whereIn('role', ['dosen', 'mahasiswa', 'user'])->get();
+                
+                if ($laboratories->isEmpty() || $users->isEmpty()) {
+                    return response()->json([
+                        'error' => 'No laboratories or users found',
+                        'laboratories_count' => $laboratories->count(),
+                        'users_count' => $users->count()
+                    ]);
+                }
+                
+                $reservation = \App\Models\Reservation::create([
+                    'user_id' => $users->random()->id,
+                    'laboratory_id' => $laboratories->random()->id,
+                    'reservation_date' => now()->addDays(rand(1, 14))->format('Y-m-d'),
+                    'start_time' => sprintf('%02d:00:00', rand(8, 14)),
+                    'end_time' => sprintf('%02d:00:00', rand(10, 17)),
+                    'purpose' => 'Test Reservation - ' . fake()->sentence(4),
+                    'description' => 'Sample reservation created from debug route for testing purposes',
+                    'participant_count' => rand(5, 30),
+                    'status' => fake()->randomElement(['pending', 'approved', 'rejected'])
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Sample reservation created successfully',
+                    'reservation' => $reservation->load(['user', 'laboratory']),
+                    'redirect' => route('admin.dashboard')
+                ]);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
+                ], 500);
+            }
+        })->name('create.sample.data');
+        
+        // Check database status
+        Route::get('/db-status', function () {
+            try {
+                $dbConnection = \Illuminate\Support\Facades\DB::connection()->getPdo();
+                
+                return response()->json([
+                    'database' => 'Connected',
+                    'tables' => [
+                        'users' => \App\Models\User::count(),
+                        'laboratories' => \App\Models\Laboratory::count(),
+                        'reservations' => \App\Models\Reservation::count(),
+                    ],
+                    'sample_user' => \App\Models\User::first(),
+                    'sample_laboratory' => \App\Models\Laboratory::first(),
+                    'recent_reservations' => \App\Models\Reservation::with(['user', 'laboratory'])->latest()->take(3)->get()
+                ]);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => 'Database connection failed: ' . $e->getMessage()
+                ], 500);
+            }
+        })->name('db.status');
     });
 }

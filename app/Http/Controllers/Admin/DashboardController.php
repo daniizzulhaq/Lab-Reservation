@@ -4,287 +4,310 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Laboratory;
-<<<<<<< HEAD
-use Illuminate\Http\Request;
-
-class DashboardController extends Controller
-{
-    public function index()
-    {
-=======
 use App\Models\Reservation;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
-    /**
-     * Display the admin dashboard with statistics and data
-     */
     public function index()
     {
         // Statistics
         $stats = [
-            'total_labs' => Laboratory::count(),
             'total_laboratories' => Laboratory::count(),
-            'total_users' => User::where('role', '!=', 'admin')->count(),
-            'total_reservations' => Reservation::count(),
+            'total_users' => User::whereIn('role', ['user', 'dosen', 'mahasiswa'])->count(),
             'pending_reservations' => Reservation::where('status', 'pending')->count(),
-            'approved_reservations' => Reservation::where('status', 'approved')->count(),
-            'rejected_reservations' => Reservation::where('status', 'rejected')->count(),
-            'completed_reservations' => Reservation::where('status', 'completed')->count(),
-            'cancelled_reservations' => Reservation::where('status', 'cancelled')->count(),
-            'today_reservations' => Reservation::whereDate('reservation_date', Carbon::today())->count(),
-            'this_month_reservations' => Reservation::whereMonth('created_at', Carbon::now()->month)
-                ->whereYear('created_at', Carbon::now()->year)
-                ->count(),
-            'active_labs' => Laboratory::where('status', 'active')->count(),
-            'maintenance_labs' => Laboratory::where('status', 'maintenance')->count(),
-            'inactive_labs' => Laboratory::where('status', 'inactive')->count(),
+            'total_reservations' => Reservation::count(),
         ];
-        
-        // Recent Reservations
+
+        // Recent reservations
         $recentReservations = Reservation::with(['user', 'laboratory'])
             ->orderBy('created_at', 'desc')
-            ->limit(10)
-            ->get();
-        
-        // Most Popular Laboratories
-        $popularLaboratories = Laboratory::withCount('reservations')
-            ->orderBy('reservations_count', 'desc')
-            ->limit(5)
-            ->get();
-        
-        // Weekly Statistics
-        $weeklyStats = [];
-        for ($i = 6; $i >= 0; $i--) {
-            $date = Carbon::today()->subDays($i);
-            $weeklyStats[] = [
-                'date' => $date->format('M d'),
-                'reservations' => Reservation::whereDate('created_at', $date)->count()
-            ];
-        }
-        
-        return view('admin.dashboard', compact(
-            'stats', 
-            'recentReservations', 
-            'popularLaboratories', 
-            'weeklyStats'
-        ));
-    }
-    
-    /**
-     * Get calendar events for admin dashboard
-     */
-    public function calendarEvents()
-    {
-        $reservations = Reservation::with(['laboratory', 'user'])
+            ->take(10)
             ->get();
 
+        // Upcoming reservations
+        $upcomingReservations = Reservation::with(['user', 'laboratory'])
+            ->where('status', 'approved')
+            ->where('reservation_date', '>=', today())
+            ->orderBy('reservation_date')
+            ->orderBy('start_time')
+            ->take(5)
+            ->get();
+
+        // Laboratory statistics
+        $laboratoryStats = Laboratory::withCount([
+            'reservations', 
+            'reservations as approved_count' => function($query) {
+                $query->where('status', 'approved');
+            }
+        ])->get();
+
+        // Calendar events - Generate events for the next 3 months
+        try {
+            $calendarEvents = $this->generateCalendarEvents();
+            Log::info('Calendar events generated: ' . count($calendarEvents));
+        } catch (\Exception $e) {
+            Log::error('Error generating calendar events: ' . $e->getMessage());
+            $calendarEvents = $this->createSampleEvents();
+        }
+
+        return view('admin.dashboard', compact(
+            'stats',
+            'recentReservations', 
+            'upcomingReservations',
+            'laboratoryStats',
+            'calendarEvents'
+        ));
+    }
+
+    private function generateCalendarEvents()
+    {
+        $startDate = now()->startOfMonth()->subMonth();
+        $endDate = now()->endOfMonth()->addMonths(2);
+
+        $reservations = Reservation::with(['laboratory', 'user'])
+            ->whereBetween('reservation_date', [$startDate, $endDate])
+            ->get();
+
+        Log::info("Found {$reservations->count()} reservations between {$startDate} and {$endDate}");
+
         $events = $reservations->map(function ($reservation) {
+            $statusColors = [
+                'pending' => '#ffc107',      // Warning yellow
+                'approved' => '#28a745',     // Success green  
+                'rejected' => '#dc3545',     // Danger red
+                'cancelled' => '#6c757d',    // Secondary gray
+                'completed' => '#17a2b8'     // Info blue
+            ];
+
+            $color = $statusColors[$reservation->status] ?? '#6c757d';
+            $textColor = $reservation->status === 'pending' ? '#000000' : '#ffffff';
+
             return [
-                'id' => $reservation->id,
+                'id' => 'reservation-' . $reservation->id,
                 'title' => $reservation->laboratory->name . ' - ' . $reservation->user->name,
                 'start' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time,
                 'end' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time,
-                'backgroundColor' => $this->getStatusColor($reservation->status),
-                'borderColor' => $this->getStatusColor($reservation->status),
-                'textColor' => '#ffffff',
+                'backgroundColor' => $color,
+                'borderColor' => $color,
+                'textColor' => $textColor,
                 'extendedProps' => [
                     'laboratory' => $reservation->laboratory->name,
                     'user' => $reservation->user->name,
-                    'user_role' => ucfirst($reservation->user->role),
                     'purpose' => $reservation->purpose,
+                    'status' => $reservation->status,
                     'participant_count' => $reservation->participant_count,
-                    'status' => ucfirst($reservation->status),
-                    'reservation_id' => $reservation->id
+                    'reservation_id' => $reservation->id,
+                    'description' => $reservation->description ?? '',
+                    'admin_notes' => $reservation->admin_notes ?? ''
                 ]
             ];
         });
 
-        return response()->json($events);
+        return $events->toArray();
     }
-    
-    /**
-     * Get chart data for dashboard
-     */
-    public function getChartData()
+
+    private function createSampleEvents()
     {
-        // Monthly reservation data for the last 12 months
-        $monthlyData = [];
-        for ($i = 11; $i >= 0; $i--) {
-            $date = Carbon::today()->startOfMonth()->subMonths($i);
-            $monthlyData[] = [
-                'month' => $date->format('M Y'),
-                'reservations' => Reservation::whereYear('created_at', $date->year)
-                    ->whereMonth('created_at', $date->month)
-                    ->count()
+        Log::info('Creating sample events for testing');
+        
+        $sampleEvents = [];
+        $laboratories = Laboratory::take(3)->get();
+        $users = User::whereIn('role', ['user', 'dosen', 'mahasiswa'])->take(5)->get();
+
+        if ($laboratories->isEmpty() || $users->isEmpty()) {
+            Log::warning('No laboratories or users found for sample events');
+            return [];
+        }
+
+        $statuses = ['pending', 'approved', 'rejected', 'cancelled', 'completed'];
+        $colors = [
+            'pending' => '#ffc107',
+            'approved' => '#28a745',
+            'rejected' => '#dc3545',
+            'cancelled' => '#6c757d',
+            'completed' => '#17a2b8'
+        ];
+
+        // Create sample events for the next 14 days
+        for ($i = 0; $i < 10; $i++) {
+            $date = now()->addDays(rand(1, 14))->format('Y-m-d');
+            $startHour = rand(8, 16);
+            $duration = rand(1, 4);
+            $endHour = $startHour + $duration;
+            
+            $laboratory = $laboratories->random();
+            $user = $users->random();
+            $status = $statuses[array_rand($statuses)];
+            
+            $sampleEvents[] = [
+                'id' => 'sample-' . ($i + 1),
+                'title' => $laboratory->name . ' - ' . $user->name,
+                'start' => $date . 'T' . sprintf('%02d:00:00', $startHour),
+                'end' => $date . 'T' . sprintf('%02d:00:00', $endHour),
+                'backgroundColor' => $colors[$status],
+                'borderColor' => $colors[$status],
+                'textColor' => $status === 'pending' ? '#000000' : '#ffffff',
+                'extendedProps' => [
+                    'laboratory' => $laboratory->name,
+                    'user' => $user->name,
+                    'purpose' => 'Sample Purpose ' . ($i + 1),
+                    'status' => $status,
+                    'participant_count' => rand(5, 30),
+                    'reservation_id' => $i + 1000,
+                    'description' => 'This is a sample event for testing purposes',
+                    'admin_notes' => 'Sample admin notes'
+                ]
             ];
         }
-        
-        // Status distribution
-        $statusData = [
-            'pending' => Reservation::where('status', 'pending')->count(),
-            'approved' => Reservation::where('status', 'approved')->count(),
-            'rejected' => Reservation::where('status', 'rejected')->count(),
-            'completed' => Reservation::where('status', 'completed')->count(),
-        ];
-        
-        // Laboratory usage data
-        $laboratoryData = Laboratory::withCount('reservations')
-            ->orderBy('reservations_count', 'desc')
-            ->limit(10)
-            ->get()
-            ->map(function ($lab) {
+
+        return $sampleEvents;
+    }
+
+    // API endpoint for calendar events
+    public function calendarEvents(Request $request)
+    {
+        try {
+            $start = $request->get('start');
+            $end = $request->get('end');
+            
+            Log::info("Calendar events requested: start={$start}, end={$end}");
+            
+            $query = Reservation::with(['laboratory', 'user']);
+            
+            if ($start && $end) {
+                $startDate = Carbon::parse($start)->format('Y-m-d');
+                $endDate = Carbon::parse($end)->format('Y-m-d');
+                
+                $query->whereBetween('reservation_date', [$startDate, $endDate]);
+                Log::info("Filtering reservations between {$startDate} and {$endDate}");
+            } else {
+                // Default to current month +/- 1 month
+                $startDate = now()->startOfMonth()->subMonth();
+                $endDate = now()->endOfMonth()->addMonth();
+                
+                $query->where('reservation_date', '>=', $startDate)
+                      ->where('reservation_date', '<=', $endDate);
+                      
+                Log::info("Using default date range: {$startDate} to {$endDate}");
+            }
+
+            $reservations = $query->get();
+            Log::info("Found {$reservations->count()} reservations");
+
+            $events = $reservations->map(function ($reservation) {
+                $statusColors = [
+                    'pending' => '#ffc107',
+                    'approved' => '#28a745',
+                    'rejected' => '#dc3545',
+                    'cancelled' => '#6c757d',
+                    'completed' => '#17a2b8'
+                ];
+
+                $color = $statusColors[$reservation->status] ?? '#6c757d';
+                $textColor = $reservation->status === 'pending' ? '#000000' : '#ffffff';
+
                 return [
-                    'name' => $lab->name,
-                    'count' => $lab->reservations_count
+                    'id' => 'reservation-' . $reservation->id,
+                    'title' => $reservation->laboratory->name . ' - ' . $reservation->user->name,
+                    'start' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time,
+                    'end' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time,
+                    'backgroundColor' => $color,
+                    'borderColor' => $color,
+                    'textColor' => $textColor,
+                    'extendedProps' => [
+                        'laboratory' => $reservation->laboratory->name,
+                        'user' => $reservation->user->name,
+                        'purpose' => $reservation->purpose,
+                        'status' => ucfirst($reservation->status),
+                        'participant_count' => $reservation->participant_count,
+                        'reservation_id' => $reservation->id,
+                        'description' => $reservation->description ?? '',
+                        'admin_notes' => $reservation->admin_notes ?? ''
+                    ]
                 ];
             });
-        
-        return response()->json([
-            'monthly' => $monthlyData,
-            'status' => $statusData,
-            'laboratory' => $laboratoryData
-        ]);
-    }
 
-    /**
-     * Display laboratories index page
-     */
-    public function laboratories()
-    {
->>>>>>> 92b809e (notifikasi)
-        $laboratories = Laboratory::withCount('reservations')->paginate(10);
-        return view('admin.laboratories.index', compact('laboratories'));
-    }
-
-<<<<<<< HEAD
-    public function create()
-=======
-    /**
-     * Show form for creating a new laboratory
-     */
-    public function createLaboratory()
->>>>>>> 92b809e (notifikasi)
-    {
-        return view('admin.laboratories.create');
-    }
-
-<<<<<<< HEAD
-    public function store(Request $request)
-=======
-    /**
-     * Store a newly created laboratory
-     */
-    public function storeLaboratory(Request $request)
->>>>>>> 92b809e (notifikasi)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:laboratories',
-            'description' => 'nullable|string',
-            'capacity' => 'required|integer|min:1',
-            'facilities' => 'nullable|string',
-            'status' => 'required|in:active,maintenance,inactive',
-            'location' => 'nullable|string',
-        ]);
-
-        Laboratory::create($validated);
-
-        return redirect()->route('admin.laboratories.index')
-            ->with('success', 'Laboratorium berhasil ditambahkan.');
-    }
-
-<<<<<<< HEAD
-    public function show(Laboratory $laboratory)
-=======
-    /**
-     * Display the specified laboratory
-     */
-    public function showLaboratory(Laboratory $laboratory)
->>>>>>> 92b809e (notifikasi)
-    {
-        $laboratory->load(['reservations' => function($query) {
-            $query->with('user')->orderBy('reservation_date', 'desc');
-        }]);
-
-        return view('admin.laboratories.show', compact('laboratory'));
-    }
-
-<<<<<<< HEAD
-    public function edit(Laboratory $laboratory)
-=======
-    /**
-     * Show form for editing the specified laboratory
-     */
-    public function editLaboratory(Laboratory $laboratory)
->>>>>>> 92b809e (notifikasi)
-    {
-        return view('admin.laboratories.edit', compact('laboratory'));
-    }
-
-<<<<<<< HEAD
-    public function update(Request $request, Laboratory $laboratory)
-=======
-    /**
-     * Update the specified laboratory
-     */
-    public function updateLaboratory(Request $request, Laboratory $laboratory)
->>>>>>> 92b809e (notifikasi)
-    {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|unique:laboratories,code,' . $laboratory->id,
-            'description' => 'nullable|string',
-            'capacity' => 'required|integer|min:1',
-            'facilities' => 'nullable|string',
-            'status' => 'required|in:active,maintenance,inactive',
-            'location' => 'nullable|string',
-        ]);
-
-        $laboratory->update($validated);
-
-        return redirect()->route('admin.laboratories.index')
-            ->with('success', 'Laboratorium berhasil diperbarui.');
-    }
-
-<<<<<<< HEAD
-    public function destroy(Laboratory $laboratory)
-=======
-    /**
-     * Remove the specified laboratory
-     */
-    public function destroyLaboratory(Laboratory $laboratory)
->>>>>>> 92b809e (notifikasi)
-    {
-        if ($laboratory->reservations()->exists()) {
-            return back()->with('error', 'Tidak dapat menghapus laboratorium yang memiliki reservasi.');
+            Log::info("Returning {$events->count()} calendar events");
+            
+            return response()->json($events);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in calendarEvents: ' . $e->getMessage());
+            Log::error($e->getTraceAsString());
+            
+            return response()->json(['error' => 'Failed to load calendar events'], 500);
         }
-
-        $laboratory->delete();
-
-        return redirect()->route('admin.laboratories.index')
-            ->with('success', 'Laboratorium berhasil dihapus.');
     }
-<<<<<<< HEAD
-}
-=======
-    
-    /**
-     * Get color based on reservation status
-     */
-    private function getStatusColor($status)
+
+    // Get chart data for dashboard analytics
+    public function getChartData(Request $request)
     {
-        return match($status) {
-            'approved' => '#28a745',    // Green
-            'pending' => '#ffc107',     // Yellow
-            'rejected' => '#dc3545',    // Red
-            'completed' => '#17a2b8',   // Blue
-            'cancelled' => '#6c757d',   // Gray
-            default => '#6c757d'        // Default Gray
-        };
+        try {
+            $period = $request->get('period', '30'); // days
+            $startDate = now()->subDays($period);
+
+            // Reservations by status
+            $reservationsByStatus = Reservation::where('created_at', '>=', $startDate)
+                ->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')
+                ->get()
+                ->pluck('count', 'status');
+
+            // Daily reservations
+            $dailyReservations = Reservation::where('created_at', '>=', $startDate)
+                ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            // Laboratory usage
+            $laboratoryUsage = Laboratory::withCount(['reservations' => function($query) use ($startDate) {
+                $query->where('created_at', '>=', $startDate);
+            }])->get();
+
+            return response()->json([
+                'reservationsByStatus' => $reservationsByStatus,
+                'dailyReservations' => $dailyReservations,
+                'laboratoryUsage' => $laboratoryUsage
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error in getChartData: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to load chart data'], 500);
+        }
+    }
+
+    // Method to get reservation details for modal
+    public function getReservationDetails($id)
+    {
+        try {
+            $reservation = Reservation::with(['laboratory', 'user', 'approvedBy'])
+                ->findOrFail($id);
+
+            return response()->json([
+                'id' => $reservation->id,
+                'laboratory' => $reservation->laboratory->name,
+                'user' => $reservation->user->name,
+                'purpose' => $reservation->purpose,
+                'description' => $reservation->description,
+                'reservation_date' => $reservation->reservation_date->format('d/m/Y'),
+                'start_time' => substr($reservation->start_time, 0, 5),
+                'end_time' => substr($reservation->end_time, 0, 5),
+                'participant_count' => $reservation->participant_count,
+                'status' => $reservation->status,
+                'admin_notes' => $reservation->admin_notes,
+                'approved_by' => $reservation->approvedBy ? $reservation->approvedBy->name : null,
+                'created_at' => $reservation->created_at->format('d/m/Y H:i'),
+                'updated_at' => $reservation->updated_at->format('d/m/Y H:i')
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error in getReservationDetails: ' . $e->getMessage());
+            return response()->json(['error' => 'Reservation not found'], 404);
+        }
     }
 }
->>>>>>> 92b809e (notifikasi)

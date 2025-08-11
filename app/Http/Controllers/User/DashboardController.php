@@ -3,200 +3,205 @@
 namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller;
-<<<<<<< HEAD
-use App\Models\Laboratory;
 use App\Models\Reservation;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
     public function index()
     {
-        $user = auth()->user();
+        $user = Auth::user();
         
+        // Statistics for current user
         $stats = [
-            'my_reservations' => $user->reservations()->count(),
-            'pending_reservations' => $user->reservations()->where('status', 'pending')->count(),
-            'approved_reservations' => $user->reservations()->where('status', 'approved')->count(),
-            'upcoming_reservations' => $user->reservations()
+            'my_reservations' => Reservation::where('user_id', $user->id)->count(),
+            'pending_reservations' => Reservation::where('user_id', $user->id)->where('status', 'pending')->count(),
+            'approved_reservations' => Reservation::where('user_id', $user->id)->where('status', 'approved')->count(),
+            'upcoming_reservations' => Reservation::where('user_id', $user->id)
                 ->where('status', 'approved')
                 ->where('reservation_date', '>=', today())
                 ->count(),
         ];
 
-        $recentReservations = $user->reservations()
-            ->with('laboratory')
+        // Recent reservations
+        $recentReservations = Reservation::with(['laboratory'])
+            ->where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
             ->take(5)
             ->get();
 
-        $upcomingReservations = $user->reservations()
-            ->with('laboratory')
+        // Upcoming reservations
+        $upcomingReservations = Reservation::with(['laboratory'])
+            ->where('user_id', $user->id)
             ->where('status', 'approved')
             ->where('reservation_date', '>=', today())
             ->orderBy('reservation_date')
             ->orderBy('start_time')
-            ->take(3)
+            ->take(5)
             ->get();
 
-        return view('user.dashboard', compact('stats', 'recentReservations', 'upcomingReservations'));
-    }
-}
-=======
-use App\Models\Reservation;
-use App\Models\Laboratory;
-use Illuminate\Http\Request;
-use Carbon\Carbon;
-use Illuminate\Support\Facades\Auth;
+        // Calendar events - Generate events for the current user
+        try {
+            $calendarEvents = $this->generateUserCalendarEvents($user->id);
+            Log::info('User calendar events generated: ' . count($calendarEvents));
+        } catch (\Exception $e) {
+            Log::error('Error generating user calendar events: ' . $e->getMessage());
+            $calendarEvents = [];
+        }
 
-class DashboardController extends Controller
-{
-    /**
-     * Display user dashboard
-     */
-    public function index()
-    {
-        $user = Auth::user();
-        
-        // User Statistics
-        $stats = [
-            'my_reservations' => Reservation::where('user_id', $user->id)->count(),
-            'pending_reservations' => Reservation::where('user_id', $user->id)
-                ->where('status', 'pending')->count(),
-            'approved_reservations' => Reservation::where('user_id', $user->id)
-                ->where('status', 'approved')->count(),
-            'upcoming_reservations' => Reservation::where('user_id', $user->id)
-                ->where('reservation_date', '>=', Carbon::today())
-                ->where('status', 'approved')
-                ->count(),
-        ];
-        
-        // Upcoming Reservations (next 7 days)
-        $upcomingReservations = Reservation::with('laboratory')
-            ->where('user_id', $user->id)
-            ->where('reservation_date', '>=', Carbon::today())
-            ->where('reservation_date', '<=', Carbon::today()->addDays(7))
-            ->whereIn('status', ['approved', 'pending'])
-            ->orderBy('reservation_date', 'asc')
-            ->orderBy('start_time', 'asc')
-            ->limit(5)
-            ->get();
-        
-        // Recent Reservations
-        $recentReservations = Reservation::with('laboratory')
-            ->where('user_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->limit(10)
-            ->get();
-        
         return view('user.dashboard', compact(
             'stats',
-            'upcomingReservations', 
-            'recentReservations'
+            'recentReservations',
+            'upcomingReservations',
+            'calendarEvents'
         ));
     }
-    
-    /**
-     * Get calendar events for user dashboard
-     */
-    public function calendarEvents()
+
+    private function generateUserCalendarEvents($userId)
     {
-        $user = Auth::user();
-        
+        $startDate = now()->startOfMonth()->subMonth();
+        $endDate = now()->endOfMonth()->addMonths(2);
+
         $reservations = Reservation::with(['laboratory'])
-            ->where('user_id', $user->id)
+            ->where('user_id', $userId)
+            ->whereBetween('reservation_date', [$startDate, $endDate])
             ->get();
 
+        Log::info("Found {$reservations->count()} user reservations between {$startDate} and {$endDate}");
+
         $events = $reservations->map(function ($reservation) {
-            $startDateTime = $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time;
-            $endDateTime = $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time;
-            
+            $statusColors = [
+                'pending' => '#ffc107',      // Warning yellow
+                'approved' => '#28a745',     // Success green  
+                'rejected' => '#dc3545',     // Danger red
+                'cancelled' => '#6c757d',    // Secondary gray
+                'completed' => '#17a2b8'     // Info blue
+            ];
+
+            $color = $statusColors[$reservation->status] ?? '#6c757d';
+            $textColor = $reservation->status === 'pending' ? '#000000' : '#ffffff';
+
             return [
-                'id' => $reservation->id,
+                'id' => 'user-reservation-' . $reservation->id,
                 'title' => $reservation->laboratory->name,
-                'start' => $startDateTime,
-                'end' => $endDateTime,
-                'backgroundColor' => $this->getStatusColor($reservation->status),
-                'borderColor' => $this->getStatusColor($reservation->status),
-                'textColor' => '#ffffff',
-                'allDay' => false,
+                'start' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time,
+                'end' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time,
+                'backgroundColor' => $color,
+                'borderColor' => $color,
+                'textColor' => $textColor,
                 'extendedProps' => [
                     'laboratory' => $reservation->laboratory->name,
-                    'purpose' => $reservation->purpose ?? 'Tidak ada tujuan',
-                    'participant_count' => $reservation->participant_count ?? 0,
-                    'status' => ucfirst($reservation->status),
+                    'user' => $reservation->user->name ?? Auth::user()->name,
+                    'purpose' => $reservation->purpose,
+                    'status' => $reservation->status,
+                    'participant_count' => $reservation->participant_count,
                     'reservation_id' => $reservation->id,
-                    'location' => $reservation->laboratory->location ?? 'Lokasi tidak tersedia'
+                    'description' => $reservation->description ?? '',
+                    'admin_notes' => $reservation->admin_notes ?? ''
                 ]
             ];
         });
 
-        return response()->json($events);
+        return $events->toArray();
     }
-    
-    /**
-     * Get color based on reservation status
-     */
-    private function getStatusColor($status)
+
+    // API endpoint for user calendar events - Enhanced with debugging
+    public function calendarEvents(Request $request)
     {
-        return match($status) {
-            'approved' => '#28a745',    // Green
-            'pending' => '#ffc107',     // Yellow
-            'rejected' => '#dc3545',    // Red
-            'completed' => '#17a2b8',   // Blue
-            'cancelled' => '#6c757d',   // Gray
-            default => '#6c757d'        // Default Gray
-        };
-    }
-    
-    /**
-     * Get laboratories for reservation form
-     */
-    public function getLaboratories()
-    {
-        $laboratories = Laboratory::where('status', 'active')
-            ->orderBy('name')
-            ->get(['id', 'name', 'capacity', 'location']);
+        try {
+            Log::info('=== USER CALENDAR API CALLED ===');
+            Log::info('Request URL: ' . $request->fullUrl());
+            Log::info('Request Method: ' . $request->method());
+            Log::info('User Agent: ' . $request->userAgent());
             
-        return response()->json($laboratories);
-    }
-    
-    /**
-     * Check laboratory availability
-     */
-    public function checkAvailability(Request $request)
-    {
-        $request->validate([
-            'laboratory_id' => 'required|exists:laboratories,id',
-            'date' => 'required|date|after_or_equal:today',
-            'start_time' => 'required',
-            'end_time' => 'required|after:start_time',
-            'reservation_id' => 'nullable|exists:reservations,id'
-        ]);
-        
-        $query = Reservation::where('laboratory_id', $request->laboratory_id)
-            ->where('reservation_date', $request->date)
-            ->whereIn('status', ['approved', 'pending'])
-            ->where(function($q) use ($request) {
-                $q->whereBetween('start_time', [$request->start_time, $request->end_time])
-                  ->orWhereBetween('end_time', [$request->start_time, $request->end_time])
-                  ->orWhere(function($q2) use ($request) {
-                      $q2->where('start_time', '<=', $request->start_time)
-                         ->where('end_time', '>=', $request->end_time);
-                  });
+            $user = Auth::user();
+            Log::info('Authenticated User: ' . ($user ? $user->id . ' - ' . $user->name : 'NOT AUTHENTICATED'));
+            
+            if (!$user) {
+                Log::error('User not authenticated for calendar API');
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+            
+            $startDate = now()->startOfMonth()->subMonth();
+            $endDate = now()->endOfMonth()->addMonths(2);
+            
+            Log::info("Searching reservations between {$startDate} and {$endDate}");
+
+            $reservations = Reservation::with(['laboratory', 'user'])
+                ->where('user_id', $user->id)
+                ->whereBetween('reservation_date', [$startDate, $endDate])
+                ->get();
+
+            Log::info("API: Found {$reservations->count()} user reservations");
+            
+            // Log each reservation for debugging
+            foreach ($reservations as $reservation) {
+                Log::info("Reservation {$reservation->id}: {$reservation->laboratory->name} on {$reservation->reservation_date} - Status: {$reservation->status}");
+            }
+
+            $events = $reservations->map(function ($reservation) {
+                $statusColors = [
+                    'pending' => '#ffc107',
+                    'approved' => '#28a745',
+                    'rejected' => '#dc3545',
+                    'cancelled' => '#6c757d',
+                    'completed' => '#17a2b8'
+                ];
+
+                $color = $statusColors[$reservation->status] ?? '#6c757d';
+                $textColor = $reservation->status === 'pending' ? '#000000' : '#ffffff';
+
+                $event = [
+                    'id' => 'user-reservation-' . $reservation->id,
+                    'title' => $reservation->laboratory->name,
+                    'start' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time,
+                    'end' => $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time,
+                    'backgroundColor' => $color,
+                    'borderColor' => $color,
+                    'textColor' => $textColor,
+                    'extendedProps' => [
+                        'laboratory' => $reservation->laboratory->name,
+                        'user' => $reservation->user->name ?? $user->name,
+                        'purpose' => $reservation->purpose,
+                        'status' => ucfirst($reservation->status),
+                        'participant_count' => $reservation->participant_count,
+                        'reservation_id' => $reservation->id,
+                        'description' => $reservation->description ?? '',
+                        'admin_notes' => $reservation->admin_notes ?? ''
+                    ]
+                ];
+                
+                Log::info("Generated event: " . json_encode($event));
+                return $event;
             });
-        
-        // Exclude current reservation if editing
-        if ($request->reservation_id) {
-            $query->where('id', '!=', $request->reservation_id);
+
+            Log::info("API: Returning {$events->count()} calendar events");
+            Log::info('=== END USER CALENDAR API ===');
+            
+            // Add headers for debugging
+            return response()->json($events->values()->toArray())
+                ->header('X-Debug-Events-Count', $events->count())
+                ->header('X-Debug-User-ID', $user->id);
+            
+        } catch (\Exception $e) {
+            Log::error('=== ERROR in user calendarEvents ===');
+            Log::error('Error Message: ' . $e->getMessage());
+            Log::error('Error File: ' . $e->getFile() . ':' . $e->getLine());
+            Log::error('Stack Trace: ' . $e->getTraceAsString());
+            Log::error('=== END ERROR ===');
+            
+            return response()->json([
+                'error' => 'Failed to load calendar events',
+                'message' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+                'debug' => config('app.debug') ? [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ] : null
+            ], 500);
         }
-        
-        $conflictingReservations = $query->count();
-        
-        return response()->json([
-            'available' => $conflictingReservations === 0,
-            'conflicts' => $conflictingReservations
-        ]);
     }
 }
->>>>>>> 92b809e (notifikasi)
