@@ -250,6 +250,17 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const calendarEl = document.getElementById('calendar');
+<<<<<<< HEAD
+=======
+    
+    // Check if FullCalendar is loaded
+    if (typeof FullCalendar === 'undefined') {
+        console.error('FullCalendar library is not loaded!');
+        calendarEl.innerHTML = '<div class="alert alert-danger">Error: FullCalendar library tidak dapat dimuat!</div>';
+        return;
+    }
+    
+>>>>>>> 92b809e (notifikasi)
     const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'id',
@@ -260,9 +271,16 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         height: 400,
         events: {
+<<<<<<< HEAD
             url: '{{ route("user.api.calendar-events") }}',
             failure: function() {
                 alert('Gagal memuat data kalender!');
+=======
+            url: '{{ route("user.api.dashboard-calendar-events") }}',
+            failure: function(error) {
+                console.error('Calendar error:', error);
+                alert('Gagal memuat data kalender! Silakan refresh halaman.');
+>>>>>>> 92b809e (notifikasi)
             }
         },
         eventClick: function(info) {
@@ -270,12 +288,26 @@ document.addEventListener('DOMContentLoaded', function() {
             const props = event.extendedProps;
             
             let content = `Laboratorium: ${props.laboratory}\n`;
+<<<<<<< HEAD
             content += `Waktu: ${event.start.toLocaleTimeString()} - ${event.end.toLocaleTimeString()}\n`;
+=======
+            content += `Waktu: ${event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})} - ${event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'})}\n`;
+>>>>>>> 92b809e (notifikasi)
             content += `Tujuan: ${props.purpose}\n`;
             content += `Peserta: ${props.participant_count} orang\n`;
             content += `Status: ${props.status}`;
             
+<<<<<<< HEAD
             alert(content);
+=======
+            if (confirm(content + '\n\nApakah Anda ingin melihat detail reservasi ini?')) {
+                window.location.href = `{{ route('user.reservations.show', '') }}/${props.reservation_id}`;
+            }
+        },
+        eventDidMount: function(info) {
+            // Add tooltip
+            info.el.setAttribute('title', `${info.event.extendedProps.laboratory} - ${info.event.extendedProps.status}`);
+>>>>>>> 92b809e (notifikasi)
         }
     });
     
@@ -319,6 +351,35 @@ document.addEventListener('DOMContentLoaded', function() {
     color: #000 !important;
 }
 
+<<<<<<< HEAD
+=======
+/* FullCalendar custom styles */
+.fc-event {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.fc-event:hover {
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.fc-toolbar-title {
+    font-size: 1.25rem !important;
+    font-weight: 600;
+}
+
+.fc-button {
+    background-color: #0d6efd !important;
+    border-color: #0d6efd !important;
+}
+
+.fc-button:hover {
+    background-color: #0b5ed7 !important;
+    border-color: #0a58ca !important;
+}
+
+>>>>>>> 92b809e (notifikasi)
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .btn-toolbar {
@@ -333,6 +394,19 @@ document.addEventListener('DOMContentLoaded', function() {
     .table-responsive {
         font-size: 0.9rem;
     }
+<<<<<<< HEAD
+=======
+    
+    .fc-toolbar {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+    }
+>>>>>>> 92b809e (notifikasi)
 }
 </style>
 @endpush
