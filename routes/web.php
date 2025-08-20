@@ -73,12 +73,12 @@ Route::middleware('auth')->group(function () {
         
         // API Routes (Must be before resource routes)
         Route::prefix('api')->name('api.')->group(function () {
-            // Calendar and Dashboard APIs
+            // Calendar and Dashboard APIs - FIXED ROUTES
             Route::get('/calendar-events', [AdminDashboardController::class, 'calendarEvents'])->name('calendar.events');
             Route::get('/chart-data', [AdminDashboardController::class, 'getChartData'])->name('chart.data');
             Route::get('/reservation-details/{id}', [AdminDashboardController::class, 'getReservationDetails'])->name('reservation.details');
             
-            // Availability check - Fixed route name to match error
+            // Availability check
             Route::get('/availability-check', [AdminReservationController::class, 'checkAvailability'])->name('availability-check');
             Route::post('/availability-check', [AdminReservationController::class, 'checkAvailability'])->name('availability-check.post');
         });
@@ -100,7 +100,7 @@ Route::middleware('auth')->group(function () {
         Route::prefix('reports')->name('reports.')->group(function () {
             Route::get('/', [AdminReportController::class, 'index'])->name('index');
             
-            // Export routes - Fixed naming convention
+            // Export routes
             Route::get('/export/excel', [AdminReportController::class, 'exportExcel'])->name('excel');
             Route::get('/export/pdf', [AdminReportController::class, 'exportPdf'])->name('pdf');
             
@@ -122,7 +122,7 @@ Route::middleware('auth')->group(function () {
         // Dashboard
         Route::get('/dashboard', [UserDashboardController::class, 'index'])->name('dashboard');
 
-        // API Routes (Must be before resource routes)
+        // API Routes
         Route::prefix('api')->name('api.')->group(function () {
             // Calendar Events for Dashboard
             Route::get('/calendar-events', [UserDashboardController::class, 'calendarEvents'])->name('calendar.events');
@@ -196,7 +196,7 @@ if (config('app.debug')) {
             ]);
         })->name('user.info');
         
-        // Test calendar events
+        // Test calendar events - FIXED ROUTE
         Route::get('/test-admin-calendar', function () {
             try {
                 $controller = app(AdminDashboardController::class);

@@ -118,9 +118,9 @@
                         <i class="fas fa-calendar-alt me-2"></i>Kalender Reservasi
                     </h5>
                     <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-light btn-sm" onclick="if(window.calendar) window.calendar.changeView('dayGridMonth')">Bulan</button>
-                        <button type="button" class="btn btn-light btn-sm" onclick="if(window.calendar) window.calendar.changeView('timeGridWeek')">Minggu</button>
-                        <button type="button" class="btn btn-light btn-sm" onclick="if(window.calendar) window.calendar.changeView('timeGridDay')">Hari</button>
+                        <button type="button" class="btn btn-light btn-sm" onclick="changeCalendarView('dayGridMonth')">Bulan</button>
+                        <button type="button" class="btn btn-light btn-sm" onclick="changeCalendarView('timeGridWeek')">Minggu</button>
+                        <button type="button" class="btn btn-light btn-sm" onclick="changeCalendarView('timeGridDay')">Hari</button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -367,151 +367,10 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ FullCalendar library loaded successfully');
     
     try {
-        // Calendar events dari controller dengan extensive debugging
-        let calendarEvents;
-        
-        console.log('📡 Getting calendar events from server...');
-        
-        try {
-            // Periksa apakah variabel PHP tersedia
-            @if(isset($calendarEvents))
-                calendarEvents = @json($calendarEvents);
-                console.log('✅ Calendar events received from controller');
-                console.log('📊 Raw data:', calendarEvents);
-                console.log('📈 Data type:', typeof calendarEvents);
-                console.log('📋 Is array:', Array.isArray(calendarEvents));
-                
-                if (Array.isArray(calendarEvents)) {
-                    console.log('📝 Total events:', calendarEvents.length);
-                    if (calendarEvents.length > 0) {
-                        console.log('🔍 Sample event:', calendarEvents[0]);
-                    } else {
-                        console.warn('⚠️ No events found in array');
-                    }
-                }
-            @else
-                console.warn('⚠️ $calendarEvents not available from controller');
-                calendarEvents = [];
-            @endif
-        } catch (e) {
-            console.error('❌ Error parsing calendar events from controller:', e);
-            calendarEvents = [];
-        }
-        
-        // Pastikan calendarEvents adalah array
-        if (!Array.isArray(calendarEvents)) {
-            console.warn('⚠️ calendarEvents is not an array, converting to empty array');
-            calendarEvents = [];
-        }
-        
-        // Jika tidak ada events, buat sample data untuk testing
-        if (calendarEvents.length === 0) {
-            console.log('🧪 No events found, creating sample events for testing...');
-            
-            const today = new Date();
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            
-            calendarEvents = [
-                {
-                    id: 'sample-1',
-                    title: 'Sample Lab Reservation',
-                    start: today.toISOString().split('T')[0] + 'T10:00:00',
-                    end: today.toISOString().split('T')[0] + 'T12:00:00',
-                    backgroundColor: '#198754',
-                    borderColor: '#198754',
-                    textColor: '#ffffff',
-                    extendedProps: {
-                        laboratory: 'Lab Komputer',
-                        user: 'Test User',
-                        purpose: 'Testing Purpose',
-                        status: 'approved',
-                        participant_count: 10,
-                        reservation_id: 1,
-                        description: 'Sample reservation for testing'
-                    }
-                },
-                {
-                    id: 'sample-2',
-                    title: 'Another Sample',
-                    start: tomorrow.toISOString().split('T')[0] + 'T14:00:00',
-                    end: tomorrow.toISOString().split('T')[0] + 'T16:00:00',
-                    backgroundColor: '#ffc107',
-                    borderColor: '#ffc107',
-                    textColor: '#000000',
-                    extendedProps: {
-                        laboratory: 'Lab Fisika',
-                        user: 'Another User',
-                        purpose: 'Research',
-                        status: 'pending',
-                        participant_count: 5,
-                        reservation_id: 2,
-                        description: 'Another sample reservation'
-                    }
-                }
-            ];
-            
-            console.log('🧪 Sample events created:', calendarEvents);
-        }
-        
-        // Process events dengan validasi ketat
-        console.log('🔄 Processing events...');
-        
-        const processedEvents = calendarEvents.map((event, index) => {
-            console.log(`🔍 Processing event ${index + 1}:`, event);
-            
-            // Validasi struktur event
-            if (!event || typeof event !== 'object') {
-                console.warn(`⚠️ Invalid event object at index ${index}:`, event);
-                return null;
-            }
-            
-            // Validasi required fields
-            if (!event.id) {
-                console.warn(`⚠️ Event missing ID at index ${index}, generating random ID`);
-                event.id = 'event-' + Math.random().toString(36).substr(2, 9);
-            }
-            
-            if (!event.title) {
-                console.warn(`⚠️ Event missing title at index ${index}`);
-                event.title = 'No Title';
-            }
-            
-            if (!event.start) {
-                console.warn(`⚠️ Event missing start time at index ${index}`);
-                event.start = new Date().toISOString();
-            }
-            
-            const processedEvent = {
-                id: event.id,
-                title: event.title,
-                start: event.start,
-                end: event.end || event.start,
-                backgroundColor: event.backgroundColor || '#007bff',
-                borderColor: event.borderColor || '#007bff',
-                textColor: event.textColor || '#ffffff',
-                extendedProps: {
-                    laboratory: (event.extendedProps && event.extendedProps.laboratory) || 'N/A',
-                    user: (event.extendedProps && event.extendedProps.user) || 'N/A',
-                    purpose: (event.extendedProps && event.extendedProps.purpose) || 'No purpose',
-                    status: (event.extendedProps && event.extendedProps.status) || 'Unknown',
-                    participant_count: (event.extendedProps && event.extendedProps.participant_count) || 0,
-                    reservation_id: (event.extendedProps && event.extendedProps.reservation_id) || event.id,
-                    description: (event.extendedProps && event.extendedProps.description) || ''
-                }
-            };
-            
-            console.log(`✅ Event ${index + 1} processed successfully:`, processedEvent);
-            return processedEvent;
-        }).filter(event => event !== null);
-        
-        console.log('✅ All events processed:', processedEvents);
-        console.log('📊 Final event count:', processedEvents.length);
-        
-        // Initialize FullCalendar
+        // Initialize FullCalendar with AJAX events loading
         console.log('🎯 Initializing FullCalendar...');
         
-        const calendarConfig = {
+        const calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'id',
             headerToolbar: {
@@ -520,12 +379,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
             height: 'auto',
-            events: processedEvents,
+            
+            // FIXED: Use correct route name for AJAX
+            events: {
+                url: '{{ route("admin.api.calendar.events") }}',
+                method: 'GET',
+                extraParams: function() {
+                    return {
+                        '_token': '{{ csrf_token() }}'
+                    };
+                },
+                failure: function(error) {
+                    console.error('❌ Failed to load events via AJAX:', error);
+                    showError('Gagal memuat data kalender dari server. Error: ' + (error.message || 'Network error'));
+                },
+                success: function(data) {
+                    console.log('✅ Events loaded successfully:', data.length, 'events');
+                    if (data.length === 0) {
+                        console.warn('⚠️ No events received from server');
+                    } else {
+                        console.log('📋 Sample event:', data[0]);
+                    }
+                }
+            },
+            
             eventDisplay: 'block',
             dayMaxEvents: 3,
             moreLinkText: 'lainnya',
             
-            // Loading handler
             loading: function(isLoading) {
                 console.log('🔄 Calendar loading:', isLoading);
                 if (isLoading) {
@@ -535,117 +416,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             
-            // Events loaded handler
             eventsSet: function(events) {
                 console.log('📅 Events set in calendar:', events.length);
-                events.forEach((event, index) => {
-                    console.log(`📌 Event ${index + 1} in calendar:`, {
-                        id: event.id,
-                        title: event.title,
-                        start: event.start,
-                        end: event.end
-                    });
-                });
+                if (events.length === 0) {
+                    console.warn('⚠️ No events displayed in calendar');
+                    showNoEventsMessage();
+                } else {
+                    hideNoEventsMessage();
+                    console.log('✅ Calendar events displayed successfully');
+                }
             },
             
-            // Event click handler
             eventClick: function(info) {
                 console.log('👆 Event clicked:', info.event);
-                const event = info.event;
-                const props = event.extendedProps || {};
-                
-                // Format tanggal dan waktu dengan error handling
-                let startDate = 'N/A';
-                let startTime = 'N/A';
-                let endTime = 'N/A';
-                
-                try {
-                    if (event.start) {
-                        startDate = event.start.toLocaleDateString('id-ID');
-                        startTime = event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
-                    }
-                    if (event.end) {
-                        endTime = event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
-                    }
-                } catch (e) {
-                    console.warn('⚠️ Error formatting date/time:', e);
-                }
-                
-                // Update modal content
-                const modalBody = document.getElementById('eventModalBody');
-                if (modalBody) {
-                    modalBody.innerHTML = `
-                        <div class="row">
-                            <div class="col-md-6">
-                                <strong>Laboratorium:</strong><br>
-                                <p class="mb-3">${props.laboratory || 'N/A'}</p>
-                            </div>
-                            <div class="col-md-6">
-                                <strong>Pengguna:</strong><br>
-                                <p class="mb-3">${props.user || 'N/A'}</p>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <strong>Tanggal:</strong><br>
-                                <p class="mb-3">${startDate}</p>
-                            </div>
-                            <div class="col-md-6">
-                                <strong>Waktu:</strong><br>
-                                <p class="mb-3">${startTime} - ${endTime}</p>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <strong>Jumlah Peserta:</strong><br>
-                                <p class="mb-3">${props.participant_count || 0} orang</p>
-                            </div>
-                            <div class="col-md-6">
-                                <strong>Status:</strong><br>
-                                <span class="badge bg-${getStatusBadgeColor((props.status || 'unknown').toLowerCase())}">${props.status || 'Unknown'}</span>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-12">
-                                <strong>Tujuan:</strong><br>
-                                <p class="mb-0">${props.purpose || 'No purpose specified'}</p>
-                            </div>
-                        </div>
-                    `;
-                    
-                    console.log('✅ Modal content updated');
-                } else {
-                    console.error('❌ Modal body element not found');
-                }
-                
-                // Update view button link
-                const viewBtn = document.getElementById('viewReservationBtn');
-                if (viewBtn && props.reservation_id) {
-                    const baseUrl = window.location.origin;
-                    const reservationUrl = `${baseUrl}/admin/reservations/${props.reservation_id}`;
-                    viewBtn.href = reservationUrl;
-                    console.log('✅ View button URL updated:', reservationUrl);
-                }
-                
-                // Show modal
-                try {
-                    const modalElement = document.getElementById('eventModal');
-                    if (modalElement && typeof bootstrap !== 'undefined') {
-                        const modal = new bootstrap.Modal(modalElement);
-                        modal.show();
-                        console.log('✅ Modal displayed');
-                    } else {
-                        console.error('❌ Modal element or Bootstrap not found');
-                    }
-                } catch (e) {
-                    console.error('❌ Error showing modal:', e);
-                }
+                showEventModal(info.event);
             },
             
-            // Event rendering
             eventDidMount: function(info) {
-                console.log('🎨 Event mounted:', info.event.title);
-                
                 const props = info.event.extendedProps || {};
                 let startTime = '';
                 let endTime = '';
@@ -654,50 +441,39 @@ document.addEventListener('DOMContentLoaded', function() {
                     startTime = info.event.start ? info.event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
                     endTime = info.event.end ? info.event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
                 } catch (e) {
-                    console.warn('⚠️ Error formatting time in tooltip:', e);
+                    console.warn('⚠️ Error formatting time:', e);
                 }
                 
                 // Add tooltip
-                info.el.title = `${info.event.title || 'No Title'}\nWaktu: ${startTime} - ${endTime}\nStatus: ${props.status || 'Unknown'}\nPengguna: ${props.user || 'N/A'}`;
-                
-                // Make clickable
+                info.el.title = `${info.event.title}\nWaktu: ${startTime} - ${endTime}\nStatus: ${props.status || 'Unknown'}\nPengguna: ${props.user || 'N/A'}`;
                 info.el.style.cursor = 'pointer';
                 
-                // Add visual feedback
+                // Add hover effects
                 info.el.addEventListener('mouseenter', function() {
                     this.style.opacity = '0.8';
+                    this.style.transform = 'scale(1.02)';
+                    this.style.transition = 'all 0.2s ease';
                 });
                 
                 info.el.addEventListener('mouseleave', function() {
                     this.style.opacity = '1';
+                    this.style.transform = 'scale(1)';
                 });
             },
             
-            // Error handling
-            eventSourceFailure: function(errorObj) {
-                console.error('❌ Event source failure:', errorObj);
-                showError('Gagal memuat data kalender: ' + (errorObj.message || 'Unknown error'));
+            // Add error handling for failed event loading
+            eventSourceFailure: function(error) {
+                console.error('❌ Event source failure:', error);
+                showError('Tidak dapat memuat events dari server');
             }
-        };
-        
-        console.log('📋 Calendar configuration:', calendarConfig);
-        
-        const calendar = new FullCalendar.Calendar(calendarEl, calendarConfig);
+        });
         
         // Make calendar globally accessible
         window.calendar = calendar;
         
         console.log('🚀 Rendering calendar...');
-        
-        // Render calendar
-        try {
-            calendar.render();
-            console.log('✅ Calendar rendered successfully');
-            hideLoading();
-        } catch (error) {
-            console.error('❌ Error rendering calendar:', error);
-            showError('Error rendering calendar: ' + error.message);
-        }
+        calendar.render();
+        console.log('✅ Calendar rendered successfully');
         
     } catch (error) {
         console.error('❌ Error initializing calendar:', error);
@@ -706,14 +482,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Helper functions
     function showLoading() {
-        console.log('⏳ Showing loading state');
         if (loadingEl) loadingEl.style.display = 'block';
         if (calendarEl) calendarEl.style.display = 'none';
         if (errorEl) errorEl.style.display = 'none';
     }
     
     function hideLoading() {
-        console.log('✅ Hiding loading state');
         if (loadingEl) loadingEl.style.display = 'none';
         if (calendarEl) calendarEl.style.display = 'block';
     }
@@ -724,6 +498,103 @@ document.addEventListener('DOMContentLoaded', function() {
         if (calendarEl) calendarEl.style.display = 'none';
         if (errorMessage) errorMessage.textContent = message;
         if (errorEl) errorEl.style.display = 'block';
+    }
+    
+    function showNoEventsMessage() {
+        // Add a message when no events are found
+        const calendarBody = calendarEl.querySelector('.fc-view-harness');
+        if (calendarBody && !calendarBody.querySelector('.no-events-message')) {
+            const noEventsDiv = document.createElement('div');
+            noEventsDiv.className = 'no-events-message alert alert-info mt-3';
+            noEventsDiv.innerHTML = '<i class="fas fa-info-circle"></i> Tidak ada reservasi untuk periode ini';
+            calendarBody.appendChild(noEventsDiv);
+        }
+    }
+    
+    function hideNoEventsMessage() {
+        const noEventsMsg = calendarEl.querySelector('.no-events-message');
+        if (noEventsMsg) {
+            noEventsMsg.remove();
+        }
+    }
+    
+    function showEventModal(event) {
+        const props = event.extendedProps || {};
+        
+        let startDate = 'N/A';
+        let startTime = 'N/A';
+        let endTime = 'N/A';
+        
+        try {
+            if (event.start) {
+                startDate = event.start.toLocaleDateString('id-ID');
+                startTime = event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
+            }
+            if (event.end) {
+                endTime = event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
+            }
+        } catch (e) {
+            console.warn('⚠️ Error formatting date/time:', e);
+        }
+        
+        const modalBody = document.getElementById('eventModalBody');
+        if (modalBody) {
+            modalBody.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Laboratorium:</strong><br>
+                        <p class="mb-3">${props.laboratory || 'N/A'}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Pengguna:</strong><br>
+                        <p class="mb-3">${props.user || 'N/A'}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Tanggal:</strong><br>
+                        <p class="mb-3">${startDate}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Waktu:</strong><br>
+                        <p class="mb-3">${startTime} - ${endTime}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Jumlah Peserta:</strong><br>
+                        <p class="mb-3">${props.participant_count || 0} orang</p>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Status:</strong><br>
+                        <span class="badge bg-${getStatusBadgeColor((props.status || 'unknown').toLowerCase())}">${props.status || 'Unknown'}</span>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-12">
+                        <strong>Tujuan:</strong><br>
+                        <p class="mb-0">${props.purpose || 'No purpose specified'}</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Update view button
+        const viewBtn = document.getElementById('viewReservationBtn');
+        if (viewBtn && props.reservation_id) {
+            viewBtn.href = `{{ url('admin/reservations') }}/${props.reservation_id}`;
+        }
+        
+        // Show modal
+        try {
+            const modalElement = document.getElementById('eventModal');
+            if (modalElement && typeof bootstrap !== 'undefined') {
+                const modal = new bootstrap.Modal(modalElement);
+                modal.show();
+            }
+        } catch (e) {
+            console.error('❌ Error showing modal:', e);
+        }
     }
     
     function getStatusBadgeColor(status) {
@@ -737,6 +608,59 @@ document.addEventListener('DOMContentLoaded', function() {
         return colors[status] || 'secondary';
     }
 });
+
+// Global function to change calendar view
+function changeCalendarView(viewName) {
+    if (window.calendar) {
+        window.calendar.changeView(viewName);
+        console.log('📅 Calendar view changed to:', viewName);
+    } else {
+        console.error('❌ Calendar not available');
+    }
+}
+
+// Function to refresh calendar events
+function refreshCalendarEvents() {
+    if (window.calendar) {
+        console.log('🔄 Refreshing calendar events...');
+        window.calendar.refetchEvents();
+    }
+}
+
+// Manual test function to check if events endpoint is working
+function testEventsEndpoint() {
+    console.log('🧪 Testing events endpoint...');
+    
+    fetch('{{ route("admin.api.calendar.events") }}', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => {
+        console.log('📡 Response status:', response.status);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('📊 Events data received:', data);
+        if (Array.isArray(data) && data.length > 0) {
+            console.log('✅ Events endpoint is working, found', data.length, 'events');
+            console.log('📋 Sample event:', data[0]);
+        } else {
+            console.warn('⚠️ No events returned from endpoint');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error testing endpoint:', error);
+    });
+}
+
+// Call test function on page load for debugging
+setTimeout(testEventsEndpoint, 2000);
 </script>
 @endsection
 
@@ -773,11 +697,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .fc-event {
     cursor: pointer !important;
-    transition: opacity 0.2s ease;
+    transition: all 0.2s ease;
+    border-radius: 4px;
 }
 
 .fc-event:hover {
-    opacity: 0.8;
+    opacity: 0.8 !important;
+    transform: scale(1.02) !important;
 }
 
 /* Custom badge colors */
@@ -815,21 +741,31 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 1.5rem;
 }
 
+/* FullCalendar customizations */
+.fc-theme-standard .fc-scrollgrid {
+    border: 1px solid #dee2e6;
+}
+
+.fc-day-today {
+    background-color: rgba(13, 110, 253, 0.1) !important;
+}
+
+.fc-event-title {
+    font-weight: 500;
+}
+
+.fc-toolbar {
+    margin-bottom: 1rem;
+}
+
+.fc-toolbar-chunk {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    .btn-toolbar {
-        flex-wrap: wrap;
-    }
-    
-    .btn-group-sm > .btn {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
-    }
-    
-    .table-responsive {
-        font-size: 0.9rem;
-    }
-    
     #calendar {
         font-size: 0.8rem;
         min-height: 400px;
@@ -841,31 +777,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     .fc-toolbar-chunk {
-        display: flex;
         justify-content: center;
     }
-}
-
-/* FullCalendar custom styling */
-.fc-theme-standard .fc-scrollgrid {
-    border: 1px solid #dee2e6;
-}
-
-.fc-theme-standard .fc-scrollgrid-section > * {
-    border-color: #dee2e6;
-}
-
-.fc-day-today {
-    background-color: rgba(13, 110, 253, 0.1) !important;
-}
-
-.fc-event-title {
-    font-weight: 500;
-}
-
-.fc-more-link {
-    color: #6c757d;
-    font-size: 0.875em;
+    
+    .btn-group-sm > .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
 }
 </style>
 @endpush
