@@ -130,10 +130,13 @@ Route::middleware('auth')->group(function () {
             // Laboratory search
             Route::get('/search-laboratories', [UserLaboratoryController::class, 'search'])->name('search.laboratories');
             
-            // Availability check
+            // Availability check - ENHANCED with new routes
             Route::get('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check');
             Route::post('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check.post');
             Route::post('/check-availability', [UserReservationController::class, 'checkAvailability'])->name('check.availability');
+            
+            // Laboratory capacity - NEW ROUTE ADDED
+            Route::get('/laboratory-capacity/{id}', [UserReservationController::class, 'getLaboratoryCapacity'])->name('laboratory-capacity');
             
             // Notifications API
             Route::prefix('notifications')->name('notifications.')->group(function () {
