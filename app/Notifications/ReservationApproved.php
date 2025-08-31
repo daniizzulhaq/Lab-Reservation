@@ -34,7 +34,9 @@ class ReservationApproved extends Notification
             'reservation_date' => $this->reservation->reservation_date,
             'start_time' => $this->reservation->start_time,
             'end_time' => $this->reservation->end_time,
-            'type' => 'reservation_approved'
+            'type' => 'reservation_approved',
+            'icon' => 'fas fa-check-circle',
+            'color' => 'success'
         ];
     }
 

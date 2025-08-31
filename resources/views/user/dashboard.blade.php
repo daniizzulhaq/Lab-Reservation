@@ -37,11 +37,44 @@
 
 .fc-event {
     cursor: pointer !important;
-    transition: opacity 0.2s ease;
+    transition: all 0.2s ease;
+    border-radius: 4px;
 }
 
 .fc-event:hover {
-    opacity: 0.8;
+    opacity: 0.8 !important;
+    transform: scale(1.02) !important;
+}
+
+/* Status-based event styling */
+.reservation-status-pending {
+    background-color: #ffc107 !important;
+    border-color: #ffc107 !important;
+    color: #000 !important;
+}
+
+.reservation-status-approved {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    color: #fff !important;
+}
+
+.reservation-status-rejected {
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+    color: #fff !important;
+}
+
+.reservation-status-cancelled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    color: #fff !important;
+}
+
+.reservation-status-completed {
+    background-color: #17a2b8 !important;
+    border-color: #17a2b8 !important;
+    color: #fff !important;
 }
 
 /* Custom badge colors */
@@ -55,15 +88,32 @@
     padding: 0.2rem 0.4rem;
 }
 
-/* Loading spinner */
-#calendar-loading {
-    background-color: #f8f9fa;
+/* No events message styling */
+.no-events-message {
+    border: 2px dashed #dee2e6 !important;
+    background: rgba(248, 249, 250, 0.95) !important;
+    border-radius: 8px;
+    padding: 2rem;
+}
+
+/* Loading and error states */
+.alert {
     border-radius: 0.375rem;
 }
 
-/* Error styling */
-#calendar-error {
-    margin: 0;
+/* Calendar loading overlay */
+.calendar-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    border-radius: 8px;
 }
 
 /* Responsive adjustments */
@@ -84,6 +134,20 @@
     #calendar {
         font-size: 0.8rem;
         min-height: 300px;
+    }
+    
+    .fc-toolbar {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .fc-toolbar-chunk {
+        justify-content: center;
+    }
+    
+    .no-events-message {
+        padding: 1rem;
+        margin: 0.5rem;
     }
 }
 </style>
@@ -209,7 +273,7 @@
                         <button type="button" class="btn btn-light btn-sm" onclick="refreshCalendar()">Refresh</button>
                     </div>
                 </div>
-                <div class="card-body p-2">
+                <div class="card-body p-2" style="position: relative;">
                     <div id="calendar"></div>
                 </div>
                 <div class="card-footer bg-light">
@@ -375,26 +439,27 @@ let calendar = null;
 
 // Initialize calendar when page loads
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== STARTING USER CALENDAR INITIALIZATION ===');
+    
     const calendarEl = document.getElementById('calendar');
     if (!calendarEl) {
         console.error('Calendar element not found!');
+        showCalendarError('Element kalender tidak ditemukan');
         return;
     }
     
     if (typeof FullCalendar === 'undefined') {
         console.error('FullCalendar library not loaded!');
+        showCalendarError('Library FullCalendar tidak dimuat');
         return;
     }
     
-    // Get calendar events from PHP
-    let calendarEvents = [];
+    // Show initial loading
+    showCalendarLoading();
     
-    @if(isset($calendarEvents) && is_array($calendarEvents))
-        calendarEvents = @json($calendarEvents);
-    @endif
-    
-    // Initialize calendar
     try {
+        console.log('Initializing FullCalendar...');
+        
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'id',
@@ -404,47 +469,309 @@ document.addEventListener('DOMContentLoaded', function() {
                 right: 'dayGridMonth,timeGridWeek'
             },
             height: 'auto',
-            events: calendarEvents,
+            
+            // PERBAIKAN UTAMA: Event source configuration yang lebih robust
+            eventSources: [{
+                url: '/user/api/calendar-events',
+                method: 'GET',
+                extraParams: function() {
+                    return {
+                        '_token': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                    };
+                },
+                success: function(data) {
+                    console.log('=== CALENDAR EVENTS LOADED ===');
+                    console.log('Events received:', data);
+                    console.log('Number of events:', data.length);
+                    
+                    hideCalendarLoading();
+                    
+                    if (data.length === 0) {
+                        console.log('No events found, showing empty message');
+                        setTimeout(() => showNoEventsMessage(), 100);
+                    } else {
+                        console.log('Events found, hiding empty message');
+                        hideNoEventsMessage();
+                        
+                        // Log individual events for debugging
+                        data.forEach((event, index) => {
+                            console.log(`Event ${index + 1}:`, {
+                                id: event.id,
+                                title: event.title,
+                                start: event.start,
+                                end: event.end,
+                                status: event.extendedProps?.status
+                            });
+                        });
+                    }
+                },
+                failure: function(error) {
+                    console.error('=== CALENDAR EVENTS FAILED ===');
+                    console.error('Error details:', error);
+                    hideCalendarLoading();
+                    showCalendarError('Gagal memuat data kalender. Silakan refresh halaman.');
+                }
+            }],
+            
             eventDisplay: 'block',
             dayMaxEvents: 3,
             moreLinkText: 'lainnya',
             
-            eventClick: function(info) {
-                showEventModal(info.event);
+            // Loading indicator
+            loading: function(isLoading) {
+                console.log('Calendar loading state:', isLoading);
+                if (isLoading) {
+                    showCalendarLoading();
+                } else {
+                    hideCalendarLoading();
+                }
             },
             
+            // Event rendering dengan debugging
             eventDidMount: function(info) {
+                console.log('=== EVENT MOUNTED ===');
+                console.log('Event title:', info.event.title);
+                console.log('Event start:', info.event.start);
+                console.log('Event end:', info.event.end);
+                console.log('Event props:', info.event.extendedProps);
+                
                 const props = info.event.extendedProps || {};
                 const startTime = info.event.start ? info.event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
                 const endTime = info.event.end ? info.event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
                 
+                // Tooltip
                 info.el.title = `${info.event.title}\nWaktu: ${startTime} - ${endTime}\nStatus: ${props.status || 'Unknown'}`;
                 info.el.style.cursor = 'pointer';
+                
+                // Add status-based styling
+                const status = props.status ? props.status.toLowerCase() : 'unknown';
+                info.el.classList.add('reservation-status-' + status);
+                
+                // Hover effects
+                info.el.addEventListener('mouseenter', function() {
+                    this.style.opacity = '0.8';
+                    this.style.transform = 'scale(1.02)';
+                    this.style.transition = 'all 0.2s ease';
+                });
+                
+                info.el.addEventListener('mouseleave', function() {
+                    this.style.opacity = '1';
+                    this.style.transform = 'scale(1)';
+                });
+            },
+            
+            eventClick: function(info) {
+                console.log('Event clicked:', info.event);
+                showEventModal(info.event);
+            },
+            
+            // Handle events set dengan debugging
+            eventsSet: function(events) {
+                console.log('=== EVENTS SET CALLBACK ===');
+                console.log('Total events set:', events.length);
+                
+                events.forEach((event, index) => {
+                    console.log(`Event ${index + 1} in calendar:`, {
+                        id: event.id,
+                        title: event.title,
+                        start: event.start,
+                        end: event.end
+                    });
+                });
+                
+                if (events.length === 0) {
+                    console.log('No events in calendar, showing empty message');
+                    setTimeout(() => showNoEventsMessage(), 100);
+                } else {
+                    console.log('Events exist in calendar, hiding empty message');
+                    hideNoEventsMessage();
+                }
+            },
+            
+            // Enhanced error handling
+            eventSourceFailure: function(error) {
+                console.error('=== EVENT SOURCE FAILURE ===');
+                console.error('Error:', error);
+                hideCalendarLoading();
+                showCalendarError('Gagal memuat reservasi. Periksa koneksi internet atau refresh halaman.');
+            },
+            
+            // Additional debugging callbacks
+            datesSet: function(info) {
+                console.log('=== CALENDAR DATES SET ===');
+                console.log('Date range:', info.start, 'to', info.end);
             }
         });
         
         // Render calendar
+        console.log('Rendering calendar...');
         calendar.render();
         
         // Make globally accessible
         window.calendar = calendar;
         
+        console.log('=== USER CALENDAR INITIALIZED SUCCESSFULLY ===');
+        
+        // Test API endpoint setelah calendar initialized
+        setTimeout(() => {
+            testApiEndpoint();
+        }, 1000);
+        
     } catch (error) {
-        console.error('Error initializing calendar:', error);
+        console.error('=== ERROR INITIALIZING CALENDAR ===');
+        console.error('Error details:', error);
+        hideCalendarLoading();
+        showCalendarError('Error menginisialisasi kalender: ' + error.message);
     }
 });
 
+// Test API endpoint function
+function testApiEndpoint() {
+    console.log('=== TESTING API ENDPOINT ===');
+    
+    fetch('/user/api/calendar-events', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        }
+    })
+    .then(response => {
+        console.log('API Response status:', response.status);
+        console.log('API Response headers:', response.headers);
+        return response.json();
+    })
+    .then(data => {
+        console.log('=== API TEST SUCCESSFUL ===');
+        console.log('API Response data:', data);
+        console.log('Number of events from API:', data.length);
+        
+        if (data.length > 0) {
+            console.log('Sample event from API:', data[0]);
+        }
+    })
+    .catch(error => {
+        console.error('=== API TEST FAILED ===');
+        console.error('API Error:', error);
+    });
+}
+
+// Enhanced loading functions
+function showCalendarLoading() {
+    console.log('Showing calendar loading...');
+    const calendarEl = document.getElementById('calendar');
+    if (calendarEl) {
+        // Remove existing loading if any
+        hideCalendarLoading();
+        
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = 'calendar-loading';
+        loadingDiv.className = 'calendar-loading-overlay';
+        loadingDiv.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="text-muted mb-0">Memuat data kalender...</p>
+            </div>
+        `;
+        
+        calendarEl.style.position = 'relative';
+        calendarEl.appendChild(loadingDiv);
+    }
+}
+
+function hideCalendarLoading() {
+    const loadingDiv = document.getElementById('calendar-loading');
+    if (loadingDiv) {
+        console.log('Hiding calendar loading...');
+        loadingDiv.remove();
+    }
+}
+
+// Enhanced no events message
+function showNoEventsMessage() {
+    console.log('Showing no events message...');
+    const calendarEl = document.getElementById('calendar');
+    if (calendarEl && !calendarEl.querySelector('.no-events-message')) {
+        const noEventsDiv = document.createElement('div');
+        noEventsDiv.className = 'no-events-message';
+        noEventsDiv.innerHTML = `
+            <div class="text-center text-muted">
+                <i class="fas fa-calendar-times fa-3x mb-3"></i>
+                <h5>Belum ada reservasi</h5>
+                <p class="mb-3">Kalender akan menampilkan reservasi Anda setelah dibuat</p>
+                <a href="{{ route('user.reservations.create') }}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>Buat Reservasi
+                </a>
+            </div>
+        `;
+        
+        noEventsDiv.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            background: rgba(248, 249, 250, 0.95);
+            padding: 2rem;
+            border-radius: 8px;
+            border: 2px dashed #dee2e6;
+            min-width: 300px;
+        `;
+        
+        calendarEl.style.position = 'relative';
+        calendarEl.appendChild(noEventsDiv);
+    }
+}
+
+function hideNoEventsMessage() {
+    const noEventsMsg = document.querySelector('.no-events-message');
+    if (noEventsMsg) {
+        console.log('Hiding no events message...');
+        noEventsMsg.remove();
+    }
+}
+
+function showCalendarError(message) {
+    console.log('Showing calendar error:', message);
+    const calendarEl = document.getElementById('calendar');
+    if (calendarEl) {
+        calendarEl.innerHTML = `
+            <div class="alert alert-danger text-center m-3">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Error:</strong> ${message}
+                <br><br>
+                <button class="btn btn-primary btn-sm me-2" onclick="location.reload()">
+                    <i class="fas fa-refresh me-1"></i>Refresh Halaman
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" onclick="debugUserCalendarState()">
+                    <i class="fas fa-bug me-1"></i>Debug Info
+                </button>
+            </div>
+        `;
+    }
+}
+
 // Helper functions
 function changeCalendarView(view) {
+    console.log('Changing calendar view to:', view);
     if (calendar) {
         calendar.changeView(view);
+    } else {
+        console.error('Calendar not initialized');
     }
 }
 
 function refreshCalendar() {
+    console.log('=== REFRESHING USER CALENDAR ===');
     if (calendar) {
+        showCalendarLoading();
         calendar.refetchEvents();
+        console.log('Events refetched');
     } else {
+        console.log('Calendar not initialized, reloading page');
         location.reload();
     }
 }
@@ -520,5 +847,66 @@ function getStatusBadgeColor(status) {
     };
     return colors[status?.toLowerCase()] || 'secondary';
 }
+
+// Enhanced debug function
+function debugUserCalendarState() {
+    console.log('=== USER CALENDAR DEBUG INFO ===');
+    console.log('Calendar object:', calendar);
+    console.log('Calendar initialized:', calendar !== null);
+    console.log('Calendar events:', calendar ? calendar.getEvents() : 'Calendar not initialized');
+    console.log('Calendar element:', document.getElementById('calendar'));
+    console.log('FullCalendar loaded:', typeof FullCalendar !== 'undefined');
+    console.log('CSRF Token:', document.querySelector('meta[name="csrf-token"]')?.getAttribute('content'));
+    
+    // Test API endpoint
+    console.log('Testing API endpoint...');
+    fetch('/user/api/calendar-events', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        }
+    })
+    .then(response => {
+        console.log('API Response status:', response.status);
+        console.log('API Response OK:', response.ok);
+        return response.json();
+    })
+    .then(data => {
+        console.log('API response data:', data);
+        console.log('Events from API:', data.length);
+        
+        if (data.length > 0) {
+            console.log('Sample event structure:', data[0]);
+            
+            // Validate event format
+            data.forEach((event, index) => {
+                const isValidStart = event.start && !isNaN(Date.parse(event.start));
+                const isValidEnd = event.end && !isNaN(Date.parse(event.end));
+                
+                console.log(`Event ${index + 1} validation:`, {
+                    id: event.id,
+                    title: event.title,
+                    start: event.start,
+                    end: event.end,
+                    validStart: isValidStart,
+                    validEnd: isValidEnd,
+                    startParsed: isValidStart ? new Date(event.start) : 'Invalid',
+                    endParsed: isValidEnd ? new Date(event.end) : 'Invalid'
+                });
+            });
+        }
+    })
+    .catch(error => {
+        console.error('API error:', error);
+    });
+}
+
+// Make functions globally accessible
+window.debugUserCalendarState = debugUserCalendarState;
+window.refreshCalendar = refreshCalendar;
+window.changeCalendarView = changeCalendarView;
+window.testApiEndpoint = testApiEndpoint;
 </script>
 @endpush

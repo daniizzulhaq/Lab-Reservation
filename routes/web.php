@@ -73,7 +73,7 @@ Route::middleware('auth')->group(function () {
         
         // API Routes (Must be before resource routes)
         Route::prefix('api')->name('api.')->group(function () {
-            // Calendar and Dashboard APIs - FIXED ROUTES
+            // Calendar and Dashboard APIs
             Route::get('/calendar-events', [AdminDashboardController::class, 'calendarEvents'])->name('calendar.events');
             Route::get('/chart-data', [AdminDashboardController::class, 'getChartData'])->name('chart.data');
             Route::get('/reservation-details/{id}', [AdminDashboardController::class, 'getReservationDetails'])->name('reservation.details');
@@ -112,31 +112,40 @@ Route::middleware('auth')->group(function () {
         });
     });
 
-    /*
+   /*
     |--------------------------------------------------------------------------
-    | User Routes (Dosen, Mahasiswa, User)
+    | User Routes (Dosen, Mahasiswa, User) - PERBAIKAN MIDDLEWARE
     |--------------------------------------------------------------------------
     */
+    // PERBAIKAN: Menggunakan middleware yang lebih fleksibel
     Route::middleware('role:dosen,mahasiswa,user')->prefix('user')->name('user.')->group(function () {
         
         // Dashboard
         Route::get('/dashboard', [UserDashboardController::class, 'index'])->name('dashboard');
 
-        // API Routes
+        // ===== PERBAIKAN: API Routes dengan middleware tambahan =====
         Route::prefix('api')->name('api.')->group(function () {
-            // Calendar Events for Dashboard
-            Route::get('/calendar-events', [UserDashboardController::class, 'calendarEvents'])->name('calendar.events');
+            // CALENDAR EVENTS API - ROUTE YANG PALING PENTING
+            Route::get('/calendar-events', [UserDashboardController::class, 'calendarEvents'])
+                ->name('calendar.events')
+                ->middleware('throttle:60,1'); // Rate limiting untuk performance
+            
+            // Reservation details for modal
+            Route::get('/reservation-details/{id}', [UserDashboardController::class, 'getReservationDetails'])
+                ->name('reservation.details')
+                ->where('id', '[0-9]+'); // Pastikan ID numerik
             
             // Laboratory search
             Route::get('/search-laboratories', [UserLaboratoryController::class, 'search'])->name('search.laboratories');
             
-            // Availability check - ENHANCED with new routes
-            Route::get('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check');
-            Route::post('/availability-check', [UserReservationController::class, 'checkAvailability'])->name('availability-check.post');
-            Route::post('/check-availability', [UserReservationController::class, 'checkAvailability'])->name('check.availability');
+            // Availability check - PERBAIKAN: Konsistensi naming
+            Route::get('/check-availability', [UserReservationController::class, 'checkAvailability'])->name('check.availability');
+            Route::post('/check-availability', [UserReservationController::class, 'checkAvailability'])->name('check.availability.post');
             
-            // Laboratory capacity - NEW ROUTE ADDED
-            Route::get('/laboratory-capacity/{id}', [UserReservationController::class, 'getLaboratoryCapacity'])->name('laboratory-capacity');
+            // Laboratory capacity
+            Route::get('/laboratory-capacity/{id}', [UserReservationController::class, 'getLaboratoryCapacity'])
+                ->name('laboratory.capacity')
+                ->where('id', '[0-9]+');
             
             // Notifications API
             Route::prefix('notifications')->name('notifications.')->group(function () {
@@ -157,12 +166,21 @@ Route::middleware('auth')->group(function () {
 
         // Notification Management
         Route::prefix('notifications')->name('notifications.')->group(function () {
+            // Basic CRUD
             Route::get('/', [UserNotificationController::class, 'index'])->name('index');
             Route::get('/{id}', [UserNotificationController::class, 'show'])->name('show');
-            Route::post('/{id}/read', [UserNotificationController::class, 'markAsRead'])->name('read');
-            Route::post('/read-all', [UserNotificationController::class, 'markAllAsRead'])->name('read.all');
-            Route::post('/read-all-alt', [UserNotificationController::class, 'markAllAsRead'])->name('readAll');
             Route::delete('/{id}', [UserNotificationController::class, 'destroy'])->name('destroy');
+            
+            // Mark as read routes
+            Route::post('/{id}/read', [UserNotificationController::class, 'markAsRead'])->name('markAsRead');
+            Route::post('/mark-as-read/{id}', [UserNotificationController::class, 'markAsRead'])->name('read');
+            
+            // Mark all as read
+            Route::post('/read-all', [UserNotificationController::class, 'markAllAsRead'])->name('readAll');
+            Route::post('/mark-all-read', [UserNotificationController::class, 'markAllAsRead'])->name('read.all');
+            
+            // Delete operations
+            Route::delete('/read/delete-all', [UserNotificationController::class, 'deleteAllRead'])->name('deleteAllRead');
             Route::delete('/read-all', [UserNotificationController::class, 'deleteAllRead'])->name('delete.all.read');
         });
     });
@@ -170,7 +188,7 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Debug Routes (Development Only)
+| Debug Routes (Development Only) - DIPERBAIKI
 |--------------------------------------------------------------------------
 */
 if (config('app.debug')) {
@@ -190,76 +208,94 @@ if (config('app.debug')) {
             return response()->json($routes->sortBy('uri')->values());
         })->name('routes');
         
-        // User information
-        Route::get('/user-info', function () {
-            return response()->json([
-                'user' => auth()->user(),
-                'role' => auth()->user()->role,
-                'permissions' => 'Role-based access control'
-            ]);
-        })->name('user.info');
-        
-        // Test calendar events - FIXED ROUTE
-        Route::get('/test-admin-calendar', function () {
+        // ===== PERBAIKAN: Test route untuk user calendar events =====
+        Route::get('/test-user-calendar-api', function () {
             try {
-                $controller = app(AdminDashboardController::class);
-                $request = request();
-                $response = $controller->calendarEvents($request);
-                return $response;
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => $e->getMessage(),
-                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
-                ], 500);
-            }
-        })->name('test.admin.calendar');
-        
-        // Test user calendar events
-        Route::get('/test-user-calendar', function () {
-            try {
-                $controller = app(UserDashboardController::class);
-                $request = request();
-                $response = $controller->calendarEvents($request);
-                return $response;
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => $e->getMessage(),
-                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
-                ], 500);
-            }
-        })->name('test.user.calendar');
-        
-        // Create sample data
-        Route::get('/create-sample-data', function () {
-            try {
-                $laboratories = \App\Models\Laboratory::all();
-                $users = \App\Models\User::whereIn('role', ['dosen', 'mahasiswa', 'user'])->get();
-                
-                if ($laboratories->isEmpty() || $users->isEmpty()) {
-                    return response()->json([
-                        'error' => 'No laboratories or users found',
-                        'laboratories_count' => $laboratories->count(),
-                        'users_count' => $users->count()
-                    ]);
-                }
-                
-                $reservation = \App\Models\Reservation::create([
-                    'user_id' => $users->random()->id,
-                    'laboratory_id' => $laboratories->random()->id,
-                    'reservation_date' => now()->addDays(rand(1, 14))->format('Y-m-d'),
-                    'start_time' => sprintf('%02d:00:00', rand(8, 14)),
-                    'end_time' => sprintf('%02d:00:00', rand(10, 17)),
-                    'purpose' => 'Test Reservation - ' . fake()->sentence(4),
-                    'description' => 'Sample reservation created from debug route for testing purposes',
-                    'participant_count' => rand(5, 30),
-                    'status' => fake()->randomElement(['pending', 'approved', 'rejected'])
+                // Simulate request untuk user calendar events
+                $request = new \Illuminate\Http\Request();
+                $request->merge([
+                    'start' => now()->startOfMonth()->format('Y-m-d'),
+                    'end' => now()->endOfMonth()->format('Y-m-d')
                 ]);
+                
+                $controller = app(UserDashboardController::class);
+                $response = $controller->calendarEvents($request);
                 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Sample reservation created successfully',
-                    'reservation' => $reservation->load(['user', 'laboratory']),
-                    'redirect' => route('admin.dashboard')
+                    'route_exists' => true,
+                    'controller_method_exists' => method_exists($controller, 'calendarEvents'),
+                    'response_data' => $response->getData(),
+                    'current_user' => auth()->user()->only(['id', 'name', 'role']),
+                    'test_url' => '/user/api/calendar-events'
+                ]);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace',
+                    'route_exists' => \Illuminate\Support\Facades\Route::has('user.api.calendar.events'),
+                    'controller_exists' => class_exists(UserDashboardController::class)
+                ], 500);
+            }
+        })->name('test.user.calendar.api');
+        
+        // Test direct access to user calendar endpoint
+        Route::get('/test-user-calendar-direct', function () {
+            try {
+                $user = auth()->user();
+                
+                // Ambil data reservasi langsung
+                $reservations = \App\Models\Reservation::with(['laboratory'])
+                    ->where('user_id', $user->id)
+                    ->whereBetween('reservation_date', [
+                        now()->startOfMonth()->format('Y-m-d'),
+                        now()->endOfMonth()->format('Y-m-d')
+                    ])
+                    ->get();
+                
+                // Format seperti di controller
+                $events = $reservations->map(function ($reservation) use ($user) {
+                    $statusColors = [
+                        'pending' => '#ffc107',
+                        'approved' => '#28a745',
+                        'rejected' => '#dc3545',
+                        'cancelled' => '#6c757d',
+                        'completed' => '#17a2b8'
+                    ];
+
+                    $color = $statusColors[$reservation->status] ?? '#6c757d';
+                    
+                    $startDateTime = $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->start_time;
+                    $endDateTime = $reservation->reservation_date->format('Y-m-d') . 'T' . $reservation->end_time;
+
+                    return [
+                        'id' => 'user-reservation-' . $reservation->id,
+                        'title' => $reservation->laboratory->name,
+                        'start' => $startDateTime,
+                        'end' => $endDateTime,
+                        'backgroundColor' => $color,
+                        'borderColor' => $color,
+                        'extendedProps' => [
+                            'laboratory' => $reservation->laboratory->name,
+                            'user' => $user->name,
+                            'purpose' => $reservation->purpose,
+                            'status' => ucfirst($reservation->status),
+                            'reservation_id' => $reservation->id
+                        ]
+                    ];
+                });
+                
+                return response()->json([
+                    'success' => true,
+                    'raw_reservations_count' => $reservations->count(),
+                    'formatted_events_count' => $events->count(),
+                    'events' => $events->toArray(),
+                    'user_info' => $user->only(['id', 'name', 'role']),
+                    'date_range' => [
+                        'start' => now()->startOfMonth()->format('Y-m-d'),
+                        'end' => now()->endOfMonth()->format('Y-m-d')
+                    ]
                 ]);
                 
             } catch (\Exception $e) {
@@ -268,9 +304,32 @@ if (config('app.debug')) {
                     'trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug mode for full trace'
                 ], 500);
             }
-        })->name('create.sample.data');
+        })->name('test.user.calendar.direct');
         
-        // Check database status
+        // Test route validation
+        Route::get('/validate-routes', function () {
+            $routeChecks = [
+                'user.dashboard' => \Illuminate\Support\Facades\Route::has('user.dashboard'),
+                'user.api.calendar.events' => \Illuminate\Support\Facades\Route::has('user.api.calendar.events'),
+                'user.reservations.create' => \Illuminate\Support\Facades\Route::has('user.reservations.create'),
+                'user.reservations.index' => \Illuminate\Support\Facades\Route::has('user.reservations.index'),
+            ];
+            
+            $controllerChecks = [
+                'UserDashboardController exists' => class_exists(UserDashboardController::class),
+                'calendarEvents method exists' => method_exists(UserDashboardController::class, 'calendarEvents'),
+                'index method exists' => method_exists(UserDashboardController::class, 'index'),
+            ];
+            
+            return response()->json([
+                'route_checks' => $routeChecks,
+                'controller_checks' => $controllerChecks,
+                'current_user' => auth()->user()->only(['id', 'name', 'role']),
+                'middleware_applied' => 'role:dosen,mahasiswa,user'
+            ]);
+        })->name('validate.routes');
+        
+        // Test database connection and models
         Route::get('/db-status', function () {
             try {
                 $dbConnection = \Illuminate\Support\Facades\DB::connection()->getPdo();
@@ -281,10 +340,11 @@ if (config('app.debug')) {
                         'users' => \App\Models\User::count(),
                         'laboratories' => \App\Models\Laboratory::count(),
                         'reservations' => \App\Models\Reservation::count(),
+                        'notifications' => \Illuminate\Notifications\DatabaseNotification::count(),
                     ],
-                    'sample_user' => \App\Models\User::first(),
-                    'sample_laboratory' => \App\Models\Laboratory::first(),
-                    'recent_reservations' => \App\Models\Reservation::with(['user', 'laboratory'])->latest()->take(3)->get()
+                    'current_user_reservations' => \App\Models\Reservation::where('user_id', auth()->id())->count(),
+                    'sample_reservation' => \App\Models\Reservation::with(['user', 'laboratory'])->where('user_id', auth()->id())->first(),
+                    'recent_reservations' => \App\Models\Reservation::with(['user', 'laboratory'])->where('user_id', auth()->id())->latest()->take(3)->get()
                 ]);
                 
             } catch (\Exception $e) {
@@ -293,5 +353,37 @@ if (config('app.debug')) {
                 ], 500);
             }
         })->name('db.status');
+    });
+    
+    // ===== TAMBAHAN: Public debug route untuk user role (tanpa admin middleware) =====
+    Route::middleware('role:dosen,mahasiswa,user')->prefix('user/debug')->name('user.debug.')->group(function () {
+        
+        // Quick calendar test untuk user biasa
+        Route::get('/calendar-test', function () {
+            try {
+                $user = auth()->user();
+                $controller = app(UserDashboardController::class);
+                $request = request();
+                
+                $response = $controller->calendarEvents($request);
+                $data = $response->getData();
+                
+                return response()->json([
+                    'success' => true,
+                    'user' => $user->only(['id', 'name', 'role']),
+                    'events_count' => is_array($data) ? count($data) : 0,
+                    'events_data' => $data,
+                    'route_name' => 'user.api.calendar.events',
+                    'endpoint_url' => '/user/api/calendar-events'
+                ]);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => $e->getMessage(),
+                    'user' => auth()->user()->only(['id', 'name', 'role']),
+                    'stack_trace' => config('app.debug') ? $e->getTraceAsString() : 'Enable debug for stack trace'
+                ], 500);
+            }
+        })->name('calendar.test');
     });
 }

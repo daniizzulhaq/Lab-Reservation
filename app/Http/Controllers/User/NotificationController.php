@@ -63,8 +63,24 @@ class NotificationController extends Controller
         try {
             auth()->user()->unreadNotifications->markAsRead();
             
+            // Jika request adalah AJAX, return JSON response
+            if (request()->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Semua notifikasi telah ditandai sebagai dibaca.'
+                ]);
+            }
+            
             return redirect()->back()->with('success', 'Semua notifikasi telah ditandai sebagai dibaca.');
         } catch (\Exception $e) {
+            // Jika request adalah AJAX, return JSON error
+            if (request()->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal menandai semua notifikasi sebagai dibaca.'
+                ], 500);
+            }
+            
             return redirect()->back()->with('error', 'Gagal menandai semua notifikasi sebagai dibaca.');
         }
     }
@@ -143,22 +159,29 @@ class NotificationController extends Controller
                         'icon' => $notification->data['icon'] ?? 'fas fa-bell',
                         'color' => $notification->data['color'] ?? 'primary',
                         'is_read' => !is_null($notification->read_at),
+                        'read_at' => $notification->read_at,
                         'created_at' => $notification->created_at->diffForHumans(),
+                        'created_at_human' => $notification->created_at->diffForHumans(), // Tambahkan ini
                         'created_at_formatted' => $notification->created_at->format('d M Y, H:i'),
+                        'data' => $notification->data // Tambahkan data lengkap
                     ];
                 });
+
+            $unreadCount = auth()->user()->unreadNotifications->count();
 
             return response()->json([
                 'success' => true,
                 'notifications' => $notifications,
-                'unread_count' => auth()->user()->unreadNotifications->count()
+                'unread_count' => $unreadCount,
+                'has_unread' => $unreadCount > 0 // Tambahkan ini
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal mengambil notifikasi',
                 'notifications' => [],
-                'unread_count' => 0
+                'unread_count' => 0,
+                'has_unread' => false
             ], 500);
         }
     }

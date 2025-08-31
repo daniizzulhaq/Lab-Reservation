@@ -36,7 +36,9 @@ class ReservationRejected extends Notification
             'laboratory_name' => $this->reservation->laboratory->name,
             'reservation_date' => $this->reservation->reservation_date,
             'reason' => $this->reason,
-            'type' => 'reservation_rejected'
+            'type' => 'reservation_rejected',
+            'icon' => 'fas fa-times-circle',
+            'color' => 'danger'
         ];
     }
 
