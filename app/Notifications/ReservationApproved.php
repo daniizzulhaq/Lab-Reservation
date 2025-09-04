@@ -1,5 +1,6 @@
 <?php
 
+// 1. FIXED: ReservationApproved.php
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
@@ -21,7 +22,7 @@ class ReservationApproved extends Notification
 
     public function via($notifiable)
     {
-        return ['database', 'mail']; // Bisa pilih database saja jika tidak mau email
+        return ['database']; // Fokus database notification dulu
     }
 
     public function toDatabase($notifiable)
@@ -31,12 +32,14 @@ class ReservationApproved extends Notification
             'message' => 'Reservasi Anda untuk laboratorium ' . $this->reservation->laboratory->name . ' telah disetujui.',
             'reservation_id' => $this->reservation->id,
             'laboratory_name' => $this->reservation->laboratory->name,
-            'reservation_date' => $this->reservation->reservation_date,
+            'reservation_date' => $this->reservation->reservation_date->format('Y-m-d'),
             'start_time' => $this->reservation->start_time,
             'end_time' => $this->reservation->end_time,
+            'purpose' => $this->reservation->purpose ?? 'Tidak ada tujuan',
             'type' => 'reservation_approved',
             'icon' => 'fas fa-check-circle',
-            'color' => 'success'
+            'color' => 'success',
+            'admin_notes' => $this->reservation->admin_notes ?? ''
         ];
     }
 
@@ -47,7 +50,7 @@ class ReservationApproved extends Notification
             ->line('Reservasi Anda telah disetujui!')
             ->line('Detail Reservasi:')
             ->line('Laboratorium: ' . $this->reservation->laboratory->name)
-            ->line('Tanggal: ' . $this->reservation->reservation_date)
+            ->line('Tanggal: ' . $this->reservation->reservation_date->format('d F Y'))
             ->line('Waktu: ' . $this->reservation->start_time . ' - ' . $this->reservation->end_time)
             ->action('Lihat Reservasi', url('/user/reservations/' . $this->reservation->id))
             ->line('Terima kasih telah menggunakan sistem reservasi laboratorium.');

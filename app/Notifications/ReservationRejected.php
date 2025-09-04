@@ -23,7 +23,7 @@ class ReservationRejected extends Notification
 
     public function via($notifiable)
     {
-        return ['database', 'mail'];
+        return ['database']; // Fokus database notification dulu
     }
 
     public function toDatabase($notifiable)
@@ -34,11 +34,15 @@ class ReservationRejected extends Notification
                         ($this->reason ? ' Alasan: ' . $this->reason : ''),
             'reservation_id' => $this->reservation->id,
             'laboratory_name' => $this->reservation->laboratory->name,
-            'reservation_date' => $this->reservation->reservation_date,
+            'reservation_date' => $this->reservation->reservation_date->format('Y-m-d'),
+            'start_time' => $this->reservation->start_time,
+            'end_time' => $this->reservation->end_time,
+            'purpose' => $this->reservation->purpose ?? 'Tidak ada tujuan',
             'reason' => $this->reason,
             'type' => 'reservation_rejected',
             'icon' => 'fas fa-times-circle',
-            'color' => 'danger'
+            'color' => 'danger',
+            'admin_notes' => $this->reason ?? ''
         ];
     }
 
@@ -49,7 +53,7 @@ class ReservationRejected extends Notification
             ->line('Maaf, reservasi Anda ditolak.')
             ->line('Detail Reservasi:')
             ->line('Laboratorium: ' . $this->reservation->laboratory->name)
-            ->line('Tanggal: ' . $this->reservation->reservation_date);
+            ->line('Tanggal: ' . $this->reservation->reservation_date->format('d F Y'));
 
         if ($this->reason) {
             $mail->line('Alasan: ' . $this->reason);

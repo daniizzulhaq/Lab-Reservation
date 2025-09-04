@@ -18,6 +18,7 @@
         </div>
     </div>
 
+   
     <!-- Statistics Cards -->
     <div class="row mb-4">
         <div class="col-xl-3 col-lg-6 col-md-6 mb-4">
@@ -344,9 +345,17 @@
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
 
 <script>
+// Global variables
+let calendar = null;
+const API_URL = '{{ route("admin.api.calendar.events") }}';
+const CSRF_TOKEN = '{{ csrf_token() }}';
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Initializing admin calendar...');
+    console.log('API URL:', API_URL);
+    console.log('CSRF Token:', CSRF_TOKEN);
     
+    // Check required elements
     const calendarEl = document.getElementById('calendar');
     const loadingEl = document.getElementById('calendar-loading');
     const errorEl = document.getElementById('calendar-error');
@@ -357,20 +366,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Check if FullCalendar is loaded
     if (typeof FullCalendar === 'undefined') {
         console.error('❌ FullCalendar library not loaded!');
         showError('FullCalendar library tidak dapat dimuat. Silakan refresh halaman.');
         return;
     }
     
-    console.log('✅ FullCalendar library loaded successfully');
-    
+    // Initialize calendar
     try {
-        // Initialize FullCalendar with AJAX events loading
-        console.log('🎯 Initializing FullCalendar...');
-        
-        const calendar = new FullCalendar.Calendar(calendarEl, {
+        calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'id',
             headerToolbar: {
@@ -379,36 +383,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
             height: 'auto',
+            nowIndicator: true,
+            selectMirror: true,
+            dayMaxEvents: 3,
             
-            // FIXED: Use correct route name for AJAX
-            events: {
-                url: '{{ route("admin.api.calendar.events") }}',
-                method: 'GET',
-                extraParams: function() {
-                    return {
-                        '_token': '{{ csrf_token() }}'
-                    };
-                },
-                failure: function(error) {
-                    console.error('❌ Failed to load events via AJAX:', error);
-                    showError('Gagal memuat data kalender dari server. Error: ' + (error.message || 'Network error'));
-                },
-                success: function(data) {
-                    console.log('✅ Events loaded successfully:', data.length, 'events');
-                    if (data.length === 0) {
-                        console.warn('⚠️ No events received from server');
-                    } else {
-                        console.log('📋 Sample event:', data[0]);
-                    }
-                }
+            // Use function-based event loading for better control
+            events: function(info, successCallback, failureCallback) {
+                console.log('📅 Loading events for:', info.startStr, 'to', info.endStr);
+                
+                loadCalendarEvents(info.startStr, info.endStr)
+                    .then(events => {
+                        console.log('✅ Events loaded successfully:', events.length);
+                        successCallback(events);
+                    })
+                    .catch(error => {
+                        console.error('❌ Failed to load events:', error);
+                        failureCallback(error);
+                        showError('Gagal memuat data kalender: ' + error.message);
+                    });
             },
             
-            eventDisplay: 'block',
-            dayMaxEvents: 3,
-            moreLinkText: 'lainnya',
-            
             loading: function(isLoading) {
-                console.log('🔄 Calendar loading:', isLoading);
+                console.log('Loading state:', isLoading);
                 if (isLoading) {
                     showLoading();
                 } else {
@@ -416,36 +412,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             },
             
-            eventsSet: function(events) {
-                console.log('📅 Events set in calendar:', events.length);
-                if (events.length === 0) {
-                    console.warn('⚠️ No events displayed in calendar');
-                    showNoEventsMessage();
-                } else {
-                    hideNoEventsMessage();
-                    console.log('✅ Calendar events displayed successfully');
-                }
-            },
-            
-            eventClick: function(info) {
-                console.log('👆 Event clicked:', info.event);
-                showEventModal(info.event);
-            },
-            
             eventDidMount: function(info) {
                 const props = info.event.extendedProps || {};
-                let startTime = '';
-                let endTime = '';
                 
-                try {
-                    startTime = info.event.start ? info.event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
-                    endTime = info.event.end ? info.event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '';
-                } catch (e) {
-                    console.warn('⚠️ Error formatting time:', e);
-                }
+                // Create detailed tooltip
+                const tooltip = [
+                    `Lab: ${info.event.title}`,
+                    `Pengguna: ${props.user || 'N/A'}`,
+                    `Status: ${props.status || 'Unknown'}`,
+                    `Peserta: ${props.participant_count || 0} orang`,
+                    `Tujuan: ${props.purpose || 'N/A'}`
+                ].join('\n');
                 
-                // Add tooltip
-                info.el.title = `${info.event.title}\nWaktu: ${startTime} - ${endTime}\nStatus: ${props.status || 'Unknown'}\nPengguna: ${props.user || 'N/A'}`;
+                info.el.title = tooltip;
                 info.el.style.cursor = 'pointer';
                 
                 // Add hover effects
@@ -453,214 +432,454 @@ document.addEventListener('DOMContentLoaded', function() {
                     this.style.opacity = '0.8';
                     this.style.transform = 'scale(1.02)';
                     this.style.transition = 'all 0.2s ease';
+                    this.style.zIndex = '999';
                 });
                 
                 info.el.addEventListener('mouseleave', function() {
                     this.style.opacity = '1';
                     this.style.transform = 'scale(1)';
+                    this.style.zIndex = 'auto';
                 });
             },
             
-            // Add error handling for failed event loading
+            eventClick: function(info) {
+                console.log('Event clicked:', info.event);
+                showEventModal(info.event);
+                info.jsEvent.preventDefault();
+            },
+            
+            // Enhanced error handling
             eventSourceFailure: function(error) {
-                console.error('❌ Event source failure:', error);
-                showError('Tidak dapat memuat events dari server');
+                console.error('Event source failed:', error);
+                showError('Gagal memuat sumber data kalender');
             }
         });
         
-        // Make calendar globally accessible
+        // Store calendar globally
         window.calendar = calendar;
         
-        console.log('🚀 Rendering calendar...');
+        console.log('📊 Rendering calendar...');
         calendar.render();
-        console.log('✅ Calendar rendered successfully');
+        
+        // Test API after a short delay
+        setTimeout(() => {
+            testApiDirectly();
+        }, 1000);
         
     } catch (error) {
         console.error('❌ Error initializing calendar:', error);
         showError('Error initializing calendar: ' + error.message);
     }
+});
+
+// FIXED: Improved event loading function
+async function loadCalendarEvents(start, end) {
+    console.log('🔄 Loading calendar events...');
     
-    // Helper functions
-    function showLoading() {
-        if (loadingEl) loadingEl.style.display = 'block';
-        if (calendarEl) calendarEl.style.display = 'none';
-        if (errorEl) errorEl.style.display = 'none';
+    // Create URL with parameters
+    const url = new URL(API_URL, window.location.origin);
+    if (start) url.searchParams.append('start', start);
+    if (end) url.searchParams.append('end', end);
+    
+    console.log('Request URL:', url.toString());
+    
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': CSRF_TOKEN
+        },
+        credentials: 'same-origin'
+    });
+    
+    console.log('📡 Response status:', response.status);
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
     }
     
-    function hideLoading() {
-        if (loadingEl) loadingEl.style.display = 'none';
-        if (calendarEl) calendarEl.style.display = 'block';
+    const text = await response.text();
+    console.log('📄 Raw response:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+    
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (parseError) {
+        console.error('JSON Parse Error:', parseError);
+        throw new Error('Invalid JSON response: ' + text.substring(0, 100));
     }
     
-    function showError(message) {
-        console.error('❌ Showing error:', message);
-        if (loadingEl) loadingEl.style.display = 'none';
-        if (calendarEl) calendarEl.style.display = 'none';
-        if (errorMessage) errorMessage.textContent = message;
-        if (errorEl) errorEl.style.display = 'block';
+    if (!Array.isArray(data)) {
+        console.error('Expected array, got:', typeof data);
+        throw new Error('API returned invalid data format');
     }
     
-    function showNoEventsMessage() {
-        // Add a message when no events are found
-        const calendarBody = calendarEl.querySelector('.fc-view-harness');
-        if (calendarBody && !calendarBody.querySelector('.no-events-message')) {
-            const noEventsDiv = document.createElement('div');
-            noEventsDiv.className = 'no-events-message alert alert-info mt-3';
-            noEventsDiv.innerHTML = '<i class="fas fa-info-circle"></i> Tidak ada reservasi untuk periode ini';
-            calendarBody.appendChild(noEventsDiv);
-        }
-    }
-    
-    function hideNoEventsMessage() {
-        const noEventsMsg = calendarEl.querySelector('.no-events-message');
-        if (noEventsMsg) {
-            noEventsMsg.remove();
-        }
-    }
-    
-    function showEventModal(event) {
-        const props = event.extendedProps || {};
-        
-        let startDate = 'N/A';
-        let startTime = 'N/A';
-        let endTime = 'N/A';
-        
-        try {
-            if (event.start) {
-                startDate = event.start.toLocaleDateString('id-ID');
-                startTime = event.start.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
-            }
-            if (event.end) {
-                endTime = event.end.toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'});
-            }
-        } catch (e) {
-            console.warn('⚠️ Error formatting date/time:', e);
+    // Validate and transform events
+    const events = data.map(item => {
+        if (!item.id || !item.title || !item.start) {
+            console.warn('Invalid event data:', item);
+            return null;
         }
         
-        const modalBody = document.getElementById('eventModalBody');
-        if (modalBody) {
-            modalBody.innerHTML = `
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>Laboratorium:</strong><br>
-                        <p class="mb-3">${props.laboratory || 'N/A'}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Pengguna:</strong><br>
-                        <p class="mb-3">${props.user || 'N/A'}</p>
-                    </div>
+        return {
+            id: item.id,
+            title: item.title,
+            start: item.start,
+            end: item.end,
+            backgroundColor: item.backgroundColor || '#007bff',
+            borderColor: item.borderColor || item.backgroundColor || '#007bff',
+            textColor: item.textColor || '#ffffff',
+            allDay: item.allDay || false,
+            extendedProps: item.extendedProps || {}
+        };
+    }).filter(Boolean);
+    
+    console.log(`✅ Processed ${events.length} valid events from ${data.length} items`);
+    return events;
+}
+
+// Helper functions
+function showLoading() {
+    const loadingEl = document.getElementById('calendar-loading');
+    const calendarEl = document.getElementById('calendar');
+    const errorEl = document.getElementById('calendar-error');
+    
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (calendarEl) calendarEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+}
+
+function hideLoading() {
+    const loadingEl = document.getElementById('calendar-loading');
+    const calendarEl = document.getElementById('calendar');
+    const errorEl = document.getElementById('calendar-error');
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (calendarEl) calendarEl.style.display = 'block';
+    if (errorEl) errorEl.style.display = 'none';
+}
+
+function showError(message) {
+    console.error('🚨 Showing error:', message);
+    const loadingEl = document.getElementById('calendar-loading');
+    const calendarEl = document.getElementById('calendar');
+    const errorEl = document.getElementById('calendar-error');
+    const errorMessage = document.getElementById('error-message');
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (calendarEl) calendarEl.style.display = 'none';
+    if (errorMessage) errorMessage.textContent = message;
+    if (errorEl) errorEl.style.display = 'block';
+}
+
+function showEventModal(event) {
+    const props = event.extendedProps || {};
+    
+    let startDate = 'N/A';
+    let startTime = 'N/A';
+    let endTime = 'N/A';
+    
+    try {
+        if (event.start) {
+            startDate = event.start.toLocaleDateString('id-ID', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            });
+            startTime = event.start.toLocaleTimeString('id-ID', {
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: false
+            });
+        }
+        if (event.end) {
+            endTime = event.end.toLocaleTimeString('id-ID', {
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: false
+            });
+        }
+    } catch (e) {
+        console.warn('Error formatting date/time:', e);
+    }
+    
+    const modalBody = document.getElementById('eventModalBody');
+    if (modalBody) {
+        modalBody.innerHTML = `
+            <div class="row">
+                <div class="col-md-6">
+                    <strong><i class="fas fa-flask me-2"></i>Laboratorium:</strong>
+                    <p class="mb-3">${props.laboratory || 'N/A'}</p>
                 </div>
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>Tanggal:</strong><br>
-                        <p class="mb-3">${startDate}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Waktu:</strong><br>
-                        <p class="mb-3">${startTime} - ${endTime}</p>
-                    </div>
+                <div class="col-md-6">
+                    <strong><i class="fas fa-user me-2"></i>Pengguna:</strong>
+                    <p class="mb-3">${props.user || 'N/A'}</p>
                 </div>
-                <div class="row">
-                    <div class="col-md-6">
-                        <strong>Jumlah Peserta:</strong><br>
-                        <p class="mb-3">${props.participant_count || 0} orang</p>
-                    </div>
-                    <div class="col-md-6">
-                        <strong>Status:</strong><br>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <strong><i class="fas fa-calendar me-2"></i>Tanggal:</strong>
+                    <p class="mb-3">${startDate}</p>
+                </div>
+                <div class="col-md-6">
+                    <strong><i class="fas fa-clock me-2"></i>Waktu:</strong>
+                    <p class="mb-3">${startTime} - ${endTime}</p>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <strong><i class="fas fa-users me-2"></i>Jumlah Peserta:</strong>
+                    <p class="mb-3">${props.participant_count || 0} orang</p>
+                </div>
+                <div class="col-md-6">
+                    <strong><i class="fas fa-info-circle me-2"></i>Status:</strong>
+                    <p class="mb-3">
                         <span class="badge bg-${getStatusBadgeColor((props.status || 'unknown').toLowerCase())}">${props.status || 'Unknown'}</span>
-                    </div>
+                    </p>
                 </div>
-                <div class="row">
-                    <div class="col-12">
-                        <strong>Tujuan:</strong><br>
-                        <p class="mb-0">${props.purpose || 'No purpose specified'}</p>
-                    </div>
+            </div>
+            <div class="row">
+                <div class="col-12">
+                    <strong><i class="fas fa-bullseye me-2"></i>Tujuan:</strong>
+                    <p class="mb-3">${props.purpose || 'Tidak ada tujuan yang ditentukan'}</p>
+                </div>
+            </div>
+            ${props.admin_notes ? `
+            <div class="row">
+                <div class="col-12">
+                    <strong><i class="fas fa-sticky-note me-2"></i>Catatan Admin:</strong>
+                    <p class="mb-0">${props.admin_notes}</p>
+                </div>
+            </div>
+            ` : ''}
+        `;
+    }
+    
+    const viewBtn = document.getElementById('viewReservationBtn');
+    if (viewBtn && props.reservation_id) {
+        viewBtn.href = `{{ url('admin/reservations') }}/${props.reservation_id}`;
+        viewBtn.style.display = 'inline-block';
+    } else if (viewBtn) {
+        viewBtn.style.display = 'none';
+    }
+    
+    try {
+        const modalElement = document.getElementById('eventModal');
+        if (modalElement) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalElement);
+            modal.show();
+        }
+    } catch (e) {
+        console.error('Error showing modal:', e);
+        alert('Detail: ' + event.title + '\nStatus: ' + (props.status || 'Unknown'));
+    }
+}
+
+function getStatusBadgeColor(status) {
+    const colors = {
+        'pending': 'warning',
+        'approved': 'success',
+        'rejected': 'danger',
+        'cancelled': 'secondary',
+        'completed': 'info'
+    };
+    return colors[status] || 'secondary';
+}
+
+// Global functions for calendar control
+function changeCalendarView(viewName) {
+    if (calendar) {
+        console.log('📅 Changing calendar view to:', viewName);
+        calendar.changeView(viewName);
+    } else {
+        console.error('❌ Calendar not available for view change');
+    }
+}
+
+function refreshCalendarEvents() {
+    if (calendar) {
+        console.log('🔄 Manually refreshing calendar events...');
+        calendar.refetchEvents();
+    } else {
+        console.error('❌ Calendar not available for refresh');
+    }
+}
+
+// DEBUG FUNCTIONS
+function testApiDirectly() {
+    console.log('🧪 === DIRECT API TEST ===');
+    
+    const debugOutput = document.getElementById('debug-output');
+    if (debugOutput) {
+        debugOutput.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Testing API...';
+    }
+    
+    let responseStatus, responseStatusText, responseUrl;
+    
+    fetch(API_URL, {
+        method: 'GET',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': CSRF_TOKEN
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => {
+        // Store response info in variables before proceeding
+        responseStatus = response.status;
+        responseStatusText = response.statusText;
+        responseUrl = response.url;
+        
+        console.log('📡 Direct API Response:', {
+            status: responseStatus,
+            statusText: responseStatusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            url: responseUrl
+        });
+        
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${responseStatus}: ${text}`);
+            });
+        }
+        
+        return response.text();
+    })
+    .then(text => {
+        console.log('📄 Raw response text:', text);
+        
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (parseError) {
+            console.error('JSON Parse Error:', parseError);
+            throw new Error('Invalid JSON: ' + text.substring(0, 200));
+        }
+        
+        console.log('📊 Parsed data:', {
+            type: typeof data,
+            isArray: Array.isArray(data),
+            length: Array.isArray(data) ? data.length : 'N/A',
+            sample: Array.isArray(data) && data.length > 0 ? data[0] : null
+        });
+        
+        if (debugOutput) {
+            debugOutput.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>✅ API Test Success!</strong><br>
+                    Status: ${responseStatus}<br>
+                    Events found: ${Array.isArray(data) ? data.length : 'N/A'}<br>
+                    Response size: ${text.length} chars
+                </div>
+                <details>
+                    <summary>Raw Response Data</summary>
+                    <pre class="mt-2">${JSON.stringify(data, null, 2)}</pre>
+                </details>
+            `;
+        }
+        
+        // Force calendar refresh
+        if (calendar && Array.isArray(data)) {
+            console.log('🔄 Forcing calendar refresh after successful API test...');
+            calendar.refetchEvents();
+        }
+        
+    })
+    .catch(error => {
+        console.error('❌ Direct API Test Error:', error);
+        
+        if (debugOutput) {
+            debugOutput.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>❌ API Test Failed!</strong><br>
+                    Error: ${error.message}
                 </div>
             `;
         }
         
-        // Update view button
-        const viewBtn = document.getElementById('viewReservationBtn');
-        if (viewBtn && props.reservation_id) {
-            viewBtn.href = `{{ url('admin/reservations') }}/${props.reservation_id}`;
-        }
-        
-        // Show modal
-        try {
-            const modalElement = document.getElementById('eventModal');
-            if (modalElement && typeof bootstrap !== 'undefined') {
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        } catch (e) {
-            console.error('❌ Error showing modal:', e);
-        }
-    }
-    
-    function getStatusBadgeColor(status) {
-        const colors = {
-            'pending': 'warning',
-            'approved': 'success',
-            'rejected': 'danger',
-            'cancelled': 'secondary',
-            'completed': 'info'
-        };
-        return colors[status] || 'secondary';
-    }
-});
-
-// Global function to change calendar view
-function changeCalendarView(viewName) {
-    if (window.calendar) {
-        window.calendar.changeView(viewName);
-        console.log('📅 Calendar view changed to:', viewName);
-    } else {
-        console.error('❌ Calendar not available');
-    }
-}
-
-// Function to refresh calendar events
-function refreshCalendarEvents() {
-    if (window.calendar) {
-        console.log('🔄 Refreshing calendar events...');
-        window.calendar.refetchEvents();
-    }
-}
-
-// Manual test function to check if events endpoint is working
-function testEventsEndpoint() {
-    console.log('🧪 Testing events endpoint...');
-    
-    fetch('{{ route("admin.api.calendar.events") }}', {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        }
-    })
-    .then(response => {
-        console.log('📡 Response status:', response.status);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('📊 Events data received:', data);
-        if (Array.isArray(data) && data.length > 0) {
-            console.log('✅ Events endpoint is working, found', data.length, 'events');
-            console.log('📋 Sample event:', data[0]);
-        } else {
-            console.warn('⚠️ No events returned from endpoint');
-        }
-    })
-    .catch(error => {
-        console.error('❌ Error testing endpoint:', error);
+        showError('API Test Failed: ' + error.message);
     });
 }
 
-// Call test function on page load for debugging
-setTimeout(testEventsEndpoint, 2000);
+function showDebugInfo() {
+    console.log('🔍 === DEBUG INFO ===');
+    
+    const debugInfo = {
+        api_url: API_URL,
+        csrf_token: CSRF_TOKEN,
+        calendar_initialized: !!calendar,
+        fullcalendar_loaded: typeof FullCalendar !== 'undefined',
+        current_user: {!! json_encode(auth()->user() ? ['id' => auth()->user()->id, 'role' => auth()->user()->role] : null) !!},
+        current_url: window.location.href,
+        browser_info: {
+            userAgent: navigator.userAgent,
+            language: navigator.language
+        }
+    };
+    
+    console.table(debugInfo);
+    
+    const debugOutput = document.getElementById('debug-output');
+    if (debugOutput) {
+        debugOutput.innerHTML = `
+            <div class="alert alert-info">
+                <strong>🔍 Debug Information</strong>
+                <pre class="mt-2">${JSON.stringify(debugInfo, null, 2)}</pre>
+            </div>
+        `;
+    }
+}
+
+// Enhanced error handling for fetch
+function handleFetchError(error, context = 'API call') {
+    console.error(`❌ ${context} failed:`, error);
+    
+    let userMessage = 'Terjadi kesalahan saat memuat data';
+    
+    if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+        userMessage = 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
+    } else if (error.message.includes('404')) {
+        userMessage = 'Endpoint API tidak ditemukan. Periksa konfigurasi route.';
+    } else if (error.message.includes('500')) {
+        userMessage = 'Terjadi kesalahan internal server. Periksa log server.';
+    } else if (error.message.includes('CSRF')) {
+        userMessage = 'Token CSRF tidak valid. Refresh halaman dan coba lagi.';
+    }
+    
+    showError(userMessage + '\n\nDetail: ' + error.message);
+}
+
+// Auto-test function that runs periodically
+function startPeriodicApiTest() {
+    console.log('🔄 Starting periodic API test...');
+    
+    // Test immediately
+    testApiDirectly();
+    
+    // Then test every 30 seconds for the first 5 minutes
+    let testCount = 0;
+    const maxTests = 10;
+    
+    const interval = setInterval(() => {
+        testCount++;
+        console.log(`🧪 Periodic test #${testCount}...`);
+        testApiDirectly();
+        
+        if (testCount >= maxTests) {
+            clearInterval(interval);
+            console.log('✅ Periodic testing completed');
+        }
+    }, 30000);
+}
+
+// Initialize periodic testing (comment out in production)
+// setTimeout(startPeriodicApiTest, 5000);
 </script>
 @endsection
 
@@ -762,6 +981,23 @@ setTimeout(testEventsEndpoint, 2000);
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+/* Debug section styling */
+.card.border-warning {
+    border-width: 2px;
+}
+
+#debug-output {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#debug-output pre {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
 }
 
 /* Responsive adjustments */

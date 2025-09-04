@@ -43,104 +43,172 @@ class ReservationController extends Controller
     }
 
     public function approve(Request $request, Reservation $reservation)
-    {
+{
+    try {
+        \DB::beginTransaction();
+        
+        // Validate request
+        $request->validate([
+            'admin_notes' => 'nullable|string|max:500'
+        ]);
+
+        // Update reservation status
+        $reservation->update([
+            'status' => 'approved',
+            'approved_by' => auth()->id(),
+            'admin_notes' => $request->input('admin_notes', ''),
+            'approved_at' => now()
+        ]);
+
+        // Log the approval
+        \Log::info('Reservation approved', [
+            'reservation_id' => $reservation->id,
+            'admin_id' => auth()->id(),
+            'user_id' => $reservation->user_id,
+            'admin_notes' => $request->input('admin_notes', '')
+        ]);
+
+        // Send notification to user
         try {
-            // Validate input
-            $request->validate([
-                'admin_notes' => 'nullable|string|max:1000',
-            ]);
-
-            // Check if reservation is still pending
-            if ($reservation->status !== 'pending') {
-                return redirect()->back()->with('error', 'Reservasi ini sudah tidak dalam status menunggu.');
-            }
-
-            // Check for time conflicts with other approved reservations
-            $conflictExists = Reservation::where('laboratory_id', $reservation->laboratory_id)
-                ->where('reservation_date', $reservation->reservation_date)
-                ->where('status', 'approved')
-                ->where('id', '!=', $reservation->id)
-                ->where(function ($query) use ($reservation) {
-                    // Check if times overlap
-                    $query->where(function ($q) use ($reservation) {
-                        // New reservation starts during existing reservation
-                        $q->where('start_time', '<=', $reservation->start_time)
-                          ->where('end_time', '>', $reservation->start_time);
-                    })->orWhere(function ($q) use ($reservation) {
-                        // New reservation ends during existing reservation
-                        $q->where('start_time', '<', $reservation->end_time)
-                          ->where('end_time', '>=', $reservation->end_time);
-                    })->orWhere(function ($q) use ($reservation) {
-                        // New reservation completely contains existing reservation
-                        $q->where('start_time', '>=', $reservation->start_time)
-                          ->where('end_time', '<=', $reservation->end_time);
-                    });
-                })
-                ->exists();
-
-            if ($conflictExists) {
-                return redirect()->back()->with('error', 'Terdapat konflik waktu dengan reservasi lain yang sudah disetujui pada tanggal dan jam yang sama.');
-            }
-
-            // Update reservation status
-            DB::beginTransaction();
+            // Make sure reservation has laboratory loaded
+            $reservation->load(['laboratory', 'user']);
             
-            $reservation->update([
-                'status' => 'approved',
-                'admin_notes' => $request->admin_notes,
-                'approved_by' => auth()->id(),
-                'approved_at' => now(),
+            if ($reservation->user) {
+                $reservation->user->notify(new \App\Notifications\ReservationApproved($reservation));
+                \Log::info('Approval notification sent', [
+                    'reservation_id' => $reservation->id,
+                    'user_id' => $reservation->user_id
+                ]);
+            } else {
+                \Log::error('Cannot send notification - user not found', [
+                    'reservation_id' => $reservation->id,
+                    'user_id' => $reservation->user_id
+                ]);
+            }
+        } catch (\Exception $notifyError) {
+            \Log::error('Failed to send approval notification', [
+                'reservation_id' => $reservation->id,
+                'error' => $notifyError->getMessage()
             ]);
-
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Reservasi berhasil disetujui.');
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Error approving reservation: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat menyetujui reservasi.');
+            // Don't fail the approval if notification fails
         }
+
+        \DB::commit();
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Reservasi berhasil disetujui dan notifikasi telah dikirim.'
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Reservasi berhasil disetujui dan notifikasi telah dikirim.');
+
+    } catch (\Exception $e) {
+        \DB::rollback();
+        
+        \Log::error('Failed to approve reservation', [
+            'reservation_id' => $reservation->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyetujui reservasi: ' . $e->getMessage()
+            ], 500);
+        }
+
+        return redirect()->back()->with('error', 'Gagal menyetujui reservasi.');
     }
+}
 
     public function reject(Request $request, Reservation $reservation)
-    {
+{
+    try {
+        \DB::beginTransaction();
+        
+        // Validate request
+        $request->validate([
+            'admin_notes' => 'nullable|string|max:500',
+            'reason' => 'nullable|string|max:500'
+        ]);
+
+        $reason = $request->input('reason') ?: $request->input('admin_notes', 'Tidak ada alasan yang diberikan');
+
+        // Update reservation status
+        $reservation->update([
+            'status' => 'rejected',
+            'approved_by' => auth()->id(),
+            'admin_notes' => $reason,
+            'rejected_at' => now()
+        ]);
+
+        // Log the rejection
+        \Log::info('Reservation rejected', [
+            'reservation_id' => $reservation->id,
+            'admin_id' => auth()->id(),
+            'user_id' => $reservation->user_id,
+            'reason' => $reason
+        ]);
+
+        // Send notification to user
         try {
-            // Validate input - admin notes required for rejection
-            $request->validate([
-                'admin_notes' => 'required|string|max:1000',
-            ], [
-                'admin_notes.required' => 'Alasan penolakan harus diisi.',
-                'admin_notes.max' => 'Alasan penolakan maksimal 1000 karakter.'
-            ]);
-
-            // Check if reservation is still pending
-            if ($reservation->status !== 'pending') {
-                return redirect()->back()->with('error', 'Reservasi ini sudah tidak dalam status menunggu.');
-            }
-
-            // Update reservation status
-            DB::beginTransaction();
+            // Make sure reservation has laboratory loaded
+            $reservation->load(['laboratory', 'user']);
             
-            $reservation->update([
-                'status' => 'rejected',
-                'admin_notes' => $request->admin_notes,
-                'approved_by' => auth()->id(), // We use same field for who processed it
-                'approved_at' => now(), // We use same field for when it was processed
+            if ($reservation->user) {
+                $reservation->user->notify(new \App\Notifications\ReservationRejected($reservation, $reason));
+                \Log::info('Rejection notification sent', [
+                    'reservation_id' => $reservation->id,
+                    'user_id' => $reservation->user_id,
+                    'reason' => $reason
+                ]);
+            } else {
+                \Log::error('Cannot send notification - user not found', [
+                    'reservation_id' => $reservation->id,
+                    'user_id' => $reservation->user_id
+                ]);
+            }
+        } catch (\Exception $notifyError) {
+            \Log::error('Failed to send rejection notification', [
+                'reservation_id' => $reservation->id,
+                'error' => $notifyError->getMessage()
             ]);
-
-            DB::commit();
-
-            return redirect()->back()->with('success', 'Reservasi berhasil ditolak.');
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return redirect()->back()->withErrors($e->errors())->withInput();
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Error rejecting reservation: ' . $e->getMessage());
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat menolak reservasi.');
+            // Don't fail the rejection if notification fails
         }
+
+        \DB::commit();
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Reservasi berhasil ditolak dan notifikasi telah dikirim.'
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Reservasi berhasil ditolak dan notifikasi telah dikirim.');
+
+    } catch (\Exception $e) {
+        \DB::rollback();
+        
+        \Log::error('Failed to reject reservation', [
+            'reservation_id' => $reservation->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menolak reservasi: ' . $e->getMessage()
+            ], 500);
+        }
+
+        return redirect()->back()->with('error', 'Gagal menolak reservasi.');
     }
+}
 
     public function checkAvailability(Request $request)
     {
