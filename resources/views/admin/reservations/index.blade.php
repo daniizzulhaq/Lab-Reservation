@@ -112,9 +112,6 @@
                                     {{ \Carbon\Carbon::parse($reservation->end_time)->format('H:i') }}
                                 </td>
                                 <td>
-                                    <!-- Debug: hapus setelah berhasil -->
-                                   
-                                    
                                     @if($reservation->status == 'pending')
                                         <span class="badge badge-warning" style="background-color: #ffc107 !important; color: #212529 !important; padding: 0.5em 0.75em; font-size: 0.8em; border-radius: 0.25rem; display: inline-block;">Menunggu</span>
                                     @elseif($reservation->status == 'approved')
@@ -148,6 +145,14 @@
                                                     data-reservation-id="{{ $reservation->id }}"
                                                     title="Tolak">
                                                 <i class="fas fa-times"></i>
+                                            </button>
+                                        @elseif(strtolower(trim($reservation->status ?? '')) == 'approved')
+                                            <button type="button" class="btn btn-warning btn-sm cancel-btn" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#cancelModal{{ $reservation->id }}" 
+                                                    data-reservation-id="{{ $reservation->id }}"
+                                                    title="Batalkan">
+                                                <i class="fas fa-ban"></i>
                                             </button>
                                         @endif
                                     </div>
@@ -257,6 +262,57 @@
                 </div>
             </div>
         </div>
+    @elseif(strtolower(trim($reservation->status ?? '')) == 'approved')
+        <!-- Cancel Modal untuk reservasi yang sudah approved -->
+        <div class="modal fade" id="cancelModal{{ $reservation->id }}" tabindex="-1" role="dialog">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <form action="{{ route('admin.reservations.cancel', $reservation) }}" method="POST">
+                        @csrf
+                        <div class="modal-header bg-warning">
+                            <h5 class="modal-title text-dark">
+                                <i class="fas fa-exclamation-triangle"></i> 
+                                Batalkan Reservasi
+                            </h5>
+                            <button type="button" class="close" data-bs-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <strong>Perhatian!</strong> 
+                                Reservasi ini sudah disetujui sebelumnya. Pembatalan akan mengubah status menjadi "Dibatalkan".
+                            </div>
+                            <div class="mb-3">
+                                <strong>Detail Reservasi:</strong>
+                                <ul>
+                                    <li>Pengguna: {{ $reservation->user->name ?? 'N/A' }}</li>
+                                    <li>Laboratorium: {{ $reservation->laboratory->name ?? 'N/A' }}</li>
+                                    <li>Tanggal: {{ \Carbon\Carbon::parse($reservation->reservation_date)->format('d/m/Y') }}</li>
+                                    <li>Waktu: {{ \Carbon\Carbon::parse($reservation->start_time)->format('H:i') }} - {{ \Carbon\Carbon::parse($reservation->end_time)->format('H:i') }}</li>
+                                </ul>
+                            </div>
+                            <p>Apakah Anda yakin ingin membatalkan reservasi yang sudah disetujui ini?</p>
+                            <div class="mb-3">
+                                <label for="admin_notes_cancel{{ $reservation->id }}" class="form-label">
+                                    Alasan Pembatalan <span class="text-danger">*</span>
+                                </label>
+                                <textarea name="admin_notes" id="admin_notes_cancel{{ $reservation->id }}" 
+                                          class="form-control" rows="3" required
+                                          placeholder="Berikan alasan pembatalan reservasi yang sudah disetujui..."></textarea>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tidak, Tetap Pertahankan</button>
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-ban"></i> Ya, Batalkan Reservasi
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     @endif
 @endforeach
 @endsection
@@ -270,6 +326,10 @@ function showApproveModal(reservationId) {
 
 function showRejectModal(reservationId) {
     $('#rejectModal' + reservationId).modal('show');
+}
+
+function showCancelModal(reservationId) {
+    $('#cancelModal' + reservationId).modal('show');
 }
 
 $(document).ready(function() {
@@ -297,8 +357,20 @@ $(document).ready(function() {
         $(modalId).modal('show');
     });
 
+    // Handle cancel button click
+    $('.cancel-btn').on('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        var reservationId = $(this).data('reservation-id');
+        var modalId = '#cancelModal' + reservationId;
+        
+        // Show modal using jQuery
+        $(modalId).modal('show');
+    });
+
     // Handle form submission dengan loading state
-    $('form[action*="approve"], form[action*="reject"]').on('submit', function() {
+    $('form[action*="approve"], form[action*="reject"], form[action*="cancel"]').on('submit', function() {
         var submitBtn = $(this).find('button[type="submit"]');
         var originalText = submitBtn.html();
         
@@ -373,6 +445,19 @@ $(document).ready(function() {
     z-index: 1;
 }
 
+/* Styling khusus untuk tombol cancel */
+.btn-warning {
+    color: #212529;
+    background-color: #ffc107;
+    border-color: #ffc107;
+}
+
+.btn-warning:hover {
+    color: #212529;
+    background-color: #e0a800;
+    border-color: #d39e00;
+}
+
 /* Table Styling */
 .table td {
     vertical-align: middle !important;
@@ -391,6 +476,11 @@ $(document).ready(function() {
 .modal-header {
     background-color: #f8f9fa;
     border-bottom: 1px solid #dee2e6;
+}
+
+.modal-header.bg-warning {
+    background-color: #fff3cd !important;
+    border-bottom: 1px solid #ffeaa7;
 }
 
 .modal-footer {

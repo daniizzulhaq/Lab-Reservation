@@ -71,7 +71,7 @@ class ReportController extends Controller
         ));
     }
     
-    public function export(Request $request)
+    public function exportExcel(Request $request)
     {
         $filters = [
             'start_date' => $request->start_date,
@@ -146,12 +146,6 @@ class ReportController extends Controller
         $filename = 'laporan_reservasi_' . date('Y-m-d_H-i-s') . '.pdf';
         
         return $pdf->download($filename);
-    }
-    
-    public function exportExcel(Request $request)
-    {
-        // This method is kept for backward compatibility
-        return $this->export($request);
     }
     
     private function getChartData($request)

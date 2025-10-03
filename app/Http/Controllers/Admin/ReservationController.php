@@ -210,6 +210,132 @@ class ReservationController extends Controller
     }
 }
 
+    /**
+     * Cancel an approved reservation
+     * This method allows admin to cancel reservations that have already been approved
+     */
+    public function cancel(Request $request, Reservation $reservation)
+    {
+        try {
+            \DB::beginTransaction();
+            
+            // Validate request
+            $request->validate([
+                'admin_notes' => 'required|string|max:1000'
+            ], [
+                'admin_notes.required' => 'Alasan pembatalan wajib diisi',
+                'admin_notes.max' => 'Alasan pembatalan tidak boleh lebih dari 1000 karakter'
+            ]);
+
+            // Check if reservation can be cancelled
+            if (!in_array($reservation->status, ['approved', 'pending'])) {
+                throw new \Exception('Hanya reservasi dengan status "Disetujui" atau "Menunggu" yang dapat dibatalkan');
+            }
+
+            $cancelReason = $request->input('admin_notes');
+            $oldStatus = $reservation->status;
+
+            // Update reservation status to cancelled
+            $reservation->update([
+                'status' => 'cancelled',
+                'admin_notes' => $cancelReason,
+                'cancelled_at' => now(),
+                'cancelled_by' => auth()->id()
+            ]);
+
+            // Log the cancellation
+            \Log::info('Reservation cancelled by admin', [
+                'reservation_id' => $reservation->id,
+                'admin_id' => auth()->id(),
+                'user_id' => $reservation->user_id,
+                'old_status' => $oldStatus,
+                'cancel_reason' => $cancelReason
+            ]);
+
+            // Send notification to user
+            try {
+                // Make sure reservation has all required relationships loaded
+                $reservation->load(['laboratory', 'user']);
+                
+                if ($reservation->user) {
+                    // Check if ReservationCancelled notification exists
+                    if (class_exists('\App\Notifications\ReservationCancelled')) {
+                        $reservation->user->notify(new \App\Notifications\ReservationCancelled($reservation, $cancelReason));
+                        \Log::info('Cancellation notification sent using ReservationCancelled', [
+                            'reservation_id' => $reservation->id,
+                            'user_id' => $reservation->user_id,
+                            'reason' => $cancelReason
+                        ]);
+                    } else {
+                        // Use existing ReservationRejected notification as fallback with modified message
+                        $modifiedReason = "PEMBATALAN RESERVASI: " . $cancelReason . " (Reservasi yang telah disetujui ini dibatalkan oleh admin)";
+                        $reservation->user->notify(new \App\Notifications\ReservationRejected($reservation, $modifiedReason));
+                        \Log::info('Cancellation notification sent using ReservationRejected fallback', [
+                            'reservation_id' => $reservation->id,
+                            'user_id' => $reservation->user_id,
+                            'reason' => $cancelReason
+                        ]);
+                    }
+                } else {
+                    \Log::error('Cannot send cancellation notification - user not found', [
+                        'reservation_id' => $reservation->id,
+                        'user_id' => $reservation->user_id
+                    ]);
+                }
+            } catch (\Exception $notifyError) {
+                \Log::error('Failed to send cancellation notification', [
+                    'reservation_id' => $reservation->id,
+                    'error' => $notifyError->getMessage()
+                ]);
+                // Don't fail the cancellation if notification fails
+            }
+
+            \DB::commit();
+
+            if (request()->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Reservasi berhasil dibatalkan dan notifikasi telah dikirim ke pengguna.',
+                    'new_status' => 'cancelled'
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Reservasi berhasil dibatalkan dan notifikasi telah dikirim ke pengguna.');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \DB::rollback();
+            
+            if (request()->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validasi gagal',
+                    'errors' => $e->errors()
+                ], 422);
+            }
+
+            return redirect()->back()->withErrors($e->errors())->withInput();
+
+        } catch (\Exception $e) {
+            \DB::rollback();
+            
+            \Log::error('Failed to cancel reservation', [
+                'reservation_id' => $reservation->id,
+                'admin_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            if (request()->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Gagal membatalkan reservasi: ' . $e->getMessage()
+                ], 500);
+            }
+
+            return redirect()->back()->with('error', 'Gagal membatalkan reservasi: ' . $e->getMessage());
+        }
+    }
+
     public function checkAvailability(Request $request)
     {
         try {

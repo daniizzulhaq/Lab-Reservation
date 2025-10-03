@@ -259,27 +259,28 @@ Route::middleware('auth')->group(function () {
         // Laboratory Management
         Route::resource('laboratories', AdminLaboratoryController::class);
 
-        // Reservation Management
+        // Reservation Management - UPDATED WITH CANCEL ROUTE
         Route::resource('reservations', AdminReservationController::class);
         Route::prefix('reservations/{reservation}')->name('reservations.')->group(function () {
             Route::post('/approve', [AdminReservationController::class, 'approve'])->name('approve');
             Route::post('/reject', [AdminReservationController::class, 'reject'])->name('reject');
+            // ===== TAMBAHAN ROUTE CANCEL =====
+            Route::post('/cancel', [AdminReservationController::class, 'cancel'])->name('cancel');
         });
 
         // User Management
         Route::resource('users', AdminUserController::class);
 
         // Reports
-        Route::prefix('reports')->name('reports.')->group(function () {
-            Route::get('/', [AdminReportController::class, 'index'])->name('index');
-            Route::get('/export/excel', [AdminReportController::class, 'exportExcel'])->name('excel');
-            Route::get('/export/pdf', [AdminReportController::class, 'exportPdf'])->name('pdf');
-            
-            Route::prefix('export')->name('export.')->group(function () {
-                Route::get('/excel-alt', [AdminReportController::class, 'exportExcel'])->name('excel-alt');
-                Route::get('/pdf-alt', [AdminReportController::class, 'exportPdf'])->name('pdf-alt');
-            });
-        });
+          
+Route::prefix('reports')->name('reports.')->group(function () {
+    // Main reports page
+    Route::get('/', [AdminReportController::class, 'index'])->name('index');
+    
+    // Export routes
+    Route::get('/export/excel', [AdminReportController::class, 'exportExcel'])->name('excel');
+    Route::get('/export/pdf', [AdminReportController::class, 'exportPdf'])->name('pdf');
+});
     });
 
    /*
@@ -509,6 +510,7 @@ if (config('app.debug')) {
                 'admin.api.calendar.debug' => \Illuminate\Support\Facades\Route::has('admin.api.calendar.debug'),
                 'admin.api.calendar.events.alt' => \Illuminate\Support\Facades\Route::has('admin.api.calendar.events.alt'),
                 'admin.reservations.index' => \Illuminate\Support\Facades\Route::has('admin.reservations.index'),
+                'admin.reservations.cancel' => \Illuminate\Support\Facades\Route::has('admin.reservations.cancel'), // Added check for cancel route
             ];
             
             $controllerChecks = [
@@ -517,6 +519,7 @@ if (config('app.debug')) {
                 'debugCalendar method exists' => method_exists(AdminDashboardController::class, 'debugCalendar'),
                 'testEvents method exists' => method_exists(AdminDashboardController::class, 'testEvents'),
                 'index method exists' => method_exists(AdminDashboardController::class, 'index'),
+                'AdminReservationController cancel method exists' => method_exists(AdminReservationController::class, 'cancel'), // Added check for cancel method
             ];
             
             return response()->json([
@@ -628,12 +631,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin/quick-test')->name('adm
             'admin.api.calendar.events' => \Illuminate\Support\Facades\Route::has('admin.api.calendar.events'),
             'admin.api.calendar.debug' => \Illuminate\Support\Facades\Route::has('admin.api.calendar.debug'),
             'admin.api.test.json' => \Illuminate\Support\Facades\Route::has('admin.api.test.json'),
+            'admin.reservations.cancel' => \Illuminate\Support\Facades\Route::has('admin.reservations.cancel'), // Added check for cancel route
         ];
         
         $urls = [
             'calendar_events' => route('admin.api.calendar.events'),
             'calendar_debug' => \Illuminate\Support\Facades\Route::has('admin.api.calendar.debug') ? route('admin.api.calendar.debug') : 'ROUTE_NOT_FOUND',
             'dashboard' => route('admin.dashboard'),
+            'reservations_cancel' => \Illuminate\Support\Facades\Route::has('admin.reservations.cancel') ? 'admin/reservations/{reservation}/cancel' : 'ROUTE_NOT_FOUND', // Added cancel route URL
         ];
         
         return response()->json([

@@ -7,19 +7,17 @@
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">Laporan</h1>
         
-        <!-- Export Buttons - Direct Links -->
+        <!-- Export Buttons - Tanpa Filter -->
         <div class="btn-group">
             <a href="{{ route('admin.reports.excel') }}" class="btn btn-success" target="_blank">
-                <i class="fas fa-file-excel"></i> Export Excel
+                <i class="fas fa-file-excel"></i> Export Excel (Semua)
             </a>
             <a href="{{ route('admin.reports.pdf') }}" class="btn btn-danger" target="_blank">
-                <i class="fas fa-file-pdf"></i> Export PDF
+                <i class="fas fa-file-pdf"></i> Export PDF (Semua)
             </a>
         </div>
     </div>
 
-    <!-- Route Test Section (FOR DEBUGGING - REMOVE LATER) -->
-  
     <!-- Filter Section -->
     <div class="card shadow mb-4">
         <div class="card-header py-3">
@@ -99,12 +97,12 @@
                 <div class="col-md-6">
                     <p class="mb-3">Export laporan dengan filter yang sedang diterapkan:</p>
                     <div class="btn-group">
-                        <button type="button" class="btn btn-success" onclick="exportWithFilter('excel')">
+                        <a href="{{ route('admin.reports.excel', request()->all()) }}" class="btn btn-success" target="_blank">
                             <i class="fas fa-file-excel"></i> Export Excel dengan Filter
-                        </button>
-                        <button type="button" class="btn btn-danger" onclick="exportWithFilter('pdf')">
+                        </a>
+                        <a href="{{ route('admin.reports.pdf', request()->all()) }}" class="btn btn-danger" target="_blank">
                             <i class="fas fa-file-pdf"></i> Export PDF dengan Filter
-                        </button>
+                        </a>
                     </div>
                 </div>
                 <div class="col-md-6">
@@ -125,7 +123,7 @@
                                     <span class="badge badge-warning">Status: {{ ucfirst(request('status')) }}</span>
                                 @endif
                             @else
-                                <em>Tidak ada filter aktif</em>
+                                <em>Tidak ada filter aktif - Export semua data</em>
                             @endif
                         </small>
                     </div>
@@ -222,12 +220,12 @@
         <div class="card-header py-3 d-flex justify-content-between align-items-center">
             <h6 class="m-0 font-weight-bold text-primary">Data Reservasi</h6>
             <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-success" onclick="exportWithFilter('excel')">
+                <a href="{{ route('admin.reports.excel', request()->all()) }}" class="btn btn-success" target="_blank">
                     <i class="fas fa-file-excel"></i> Excel
-                </button>
-                <button type="button" class="btn btn-danger" onclick="exportWithFilter('pdf')">
+                </a>
+                <a href="{{ route('admin.reports.pdf', request()->all()) }}" class="btn btn-danger" target="_blank">
                     <i class="fas fa-file-pdf"></i> PDF
-                </button>
+                </a>
             </div>
         </div>
         <div class="card-body">
@@ -376,48 +374,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-function getFilterParams() {
-    const params = new URLSearchParams();
-    
-    const startDate = document.getElementById('start_date').value;
-    const endDate = document.getElementById('end_date').value;
-    const laboratoryId = document.getElementById('laboratory_id').value;
-    const status = document.getElementById('status').value;
-    
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    if (laboratoryId) params.append('laboratory_id', laboratoryId);
-    if (status) params.append('status', status);
-    
-    return params.toString();
-}
-
-function exportWithFilter(type) {
-    const filterParams = getFilterParams();
-    let exportUrl;
-    
-    if (type === 'excel') {
-        exportUrl = '{{ route("admin.reports.excel") }}' + (filterParams ? '?' + filterParams : '');
-    } else if (type === 'pdf') {
-        exportUrl = '{{ route("admin.reports.pdf") }}' + (filterParams ? '?' + filterParams : '');
-    }
-    
-    console.log('Export URL:', exportUrl);
-    
-    // Open in new tab to avoid issues
-    window.open(exportUrl, '_blank');
-}
-
-// Test function
-function testRoutes() {
-    console.log('Testing routes...');
-    console.log('Excel route:', '{{ route("admin.reports.excel") }}');
-    console.log('PDF route:', '{{ route("admin.reports.pdf") }}');
-}
-
-// Auto-test on page load
-window.addEventListener('load', testRoutes);
 </script>
 @endpush
 @endsection
